@@ -16,12 +16,32 @@
 
 ;;; Commentary:
 
-;; Install
-
 
 ;;; Code:
 
 (require 'cl)
+
+(defvar magscan-magazine "AH")
+
+(defun magscan-scan (file mode)
+  (call-process "/usr/slocal/bin/scanimage" nil file nil
+		(format "--mode=%s" mode)
+		"-d" (format "epsonds:libusb:%s:%s" major minor)
+		"--resolution" "300dpi"
+		"--format=png")
+  (start-process "reset" nil
+		  "~/src/usbreset/usbreset"
+		  (format "/dev/usb/%s/%s" major minor)))
+
+(defun magscan-file (issue spec)
+  (format "~/magscan/%s/%s/%s" magscan-magazine issue spec))
+
+(defun magscan (issue)
+  "Scan a magazine."
+  (interactive "sIssue: ")
+  ;; Do cover in colour.
+  ;; Do the rest of the pages.
+  )
 
 (provide 'magscan)
 
