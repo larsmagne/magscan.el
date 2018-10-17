@@ -20,6 +20,7 @@
 ;;; Code:
 
 (require 'cl)
+(require 'rmc)
 
 (defvar magscan-magazine "AH")
 
@@ -39,9 +40,63 @@
 (defun magscan (issue)
   "Scan a magazine."
   (interactive "sIssue: ")
-  ;; Do cover in colour.
-  ;; Do the rest of the pages.
-  )
+  (let ((i 0)
+	file)
+    (loop for choice in (read-multiple-choice
+			 (cond
+			  ((= i 0)
+			   "Scan front and back cover")
+			  ((= i 1)
+			   "Scan inside front and page 1")
+			  (t
+			   (format "Scan page %d and %d"
+				   (- (* i 2) 2) (- (1+ (* i 2)) 2))))
+			 '((?y "Yes")
+			   (?\r "Yup")
+			   (?q "Quit")
+			   (?n "Redo previous")))
+	  while (not (eql (car choice) ?q))
+	  when (or (eql (car choice) ?y)
+		   (eql (car choice) ?\r))
+	  do (incf i)
+	  do (setq file
+		   (magscan-file
+		    issue
+		    (concat
+		     "pre-"
+		     (cond
+		      ((= i 1)
+		       "fc-bc")
+		      ((= i 2)
+		       "ifc-001")
+		      (t
+		       (format "%03d-%03d"
+			       (- (* i 2) 4) (- (1+ (* i 2)) 4))))
+		     ".png")))
+	  (magscan-scan file 
+			(if (= i 1)
+			    "color"
+			  "gray"))
+	  (magscan-display file))
+    ;; Rename the last file.
+    (rename-file file (magscan-file
+		       issue (concat "pre-"
+				     (format "%03d-ibc" (- (* i 2) 4)))))))
+
+(defun magscan-display (file)
+  (pop-to-buffer "*scan*")
+  (erase-buffer)
+  (insert-image
+   (create-image
+    (with-temp-buffer
+      (set-buffer-multibyte nil)
+      (call-process "convert" nil nil nil
+		    "-rotate" "-90"
+		    "-resize" "700x"
+		    file "jpg:-")
+      (buffer-string))
+    'jpeg t))
+  (goto-char (point-min)))
 
 (provide 'magscan)
 
