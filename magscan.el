@@ -138,9 +138,8 @@
       (message "Splitting %s" file)
       (magscan-split-page file)))
   (dolist (file (directory-files directory t "page-.*png"))
-    (when (< (file-attribute-size (file-attributes file)) 4500000)
-      (message "OCR-ing %s" file)
-      (tcor-ocr file)))
+    (message "OCR-ing %s" file)
+    (tcor-ocr file))
   (dolist (file (directory-files directory t "page-.*png"))
     (call-process "convert" nil nil nil file
 		  (replace-regexp-in-string "[.]png\\'" ".jpg" file)))
