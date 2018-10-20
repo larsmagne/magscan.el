@@ -21,18 +21,25 @@
 
 (require 'cl)
 (require 'rmc)
+(require 'tcor)
 
 (defvar magscan-magazine "AH")
 
 (defun magscan-scan (file mode)
-  (call-process "/usr/slocal/bin/scanimage" nil file nil
-		(format "--mode=%s" mode)
-		"-d" (format "epsonds:libusb:%s:%s" major minor)
-		"--resolution" "300dpi"
-		"--format=png")
-  (start-process "reset" nil
-		  "~/src/usbreset/usbreset"
-		  (format "/dev/usb/%s/%s" major minor)))
+  (let ((major "001")
+	(minor "011"))
+    (unless (file-exists-p (file-name-directory file))
+      (make-directory (file-name-directory file) t))
+    (call-process "/usr/slocal/bin/scanimage" nil (list :file file) nil
+		  (format "--mode=%s" mode)
+		  "-d" (format "epsonds:libusb:%s:%s" major minor)
+		  "--resolution" "300dpi"
+		  "--format=png"
+		  "-x" "260"
+		  "-y" "330")
+    (start-process "reset" nil
+		   "~/src/usbreset/usbreset"
+		   (format "/dev/bus/usb/%s/%s" major minor))))
 
 (defun magscan-file (issue spec)
   (format "~/magscan/%s/%s/%s" magscan-magazine issue spec))
@@ -41,24 +48,26 @@
   "Scan a magazine."
   (interactive "sIssue: ")
   (let ((i 0)
+	colour
 	file)
-    (loop for choice in (read-multiple-choice
-			 (cond
-			  ((= i 0)
-			   "Scan front and back cover")
-			  ((= i 1)
-			   "Scan inside front and page 1")
-			  (t
-			   (format "Scan page %d and %d"
-				   (- (* i 2) 2) (- (1+ (* i 2)) 2))))
-			 '((?y "Yes")
-			   (?\r "Yup")
-			   (?q "Quit")
-			   (?n "Redo previous")))
+    (loop for choice = (read-multiple-choice
+			(cond
+			 ((= i 0)
+			  "Scan front and back cover")
+			 ((= i 1)
+			  "Scan inside front and page 3")
+			 (t
+			  (format "Scan page %d and %d"
+				  (- (* i 2) 0) (- (1+ (* i 2)) 0))))
+			'((?\r "Yes")
+			  (?q "Quit")
+			  (?c "Colour next")
+			  (?n "Redo previous")))
 	  while (not (eql (car choice) ?q))
-	  when (or (eql (car choice) ?y)
-		   (eql (car choice) ?\r))
+	  when (eql (car choice) ?\r)
 	  do (incf i)
+	  when (eql (car choice) ?c)
+	  do (setq colour t)
 	  do (setq file
 		   (magscan-file
 		    issue
@@ -67,36 +76,92 @@
 		     (cond
 		      ((= i 1)
 		       "fc-bc")
-		      ((= i 2)
-		       "ifc-001")
 		      (t
 		       (format "%03d-%03d"
-			       (- (* i 2) 4) (- (1+ (* i 2)) 4))))
+			       (- (* i 2) 2) (- (1+ (* i 2)) 2))))
 		     ".png")))
-	  (magscan-scan file 
-			(if (= i 1)
-			    "color"
-			  "gray"))
-	  (magscan-display file))
-    ;; Rename the last file.
-    (rename-file file (magscan-file
-		       issue (concat "pre-"
-				     (format "%03d-ibc" (- (* i 2) 4)))))))
+	  (unless (eql (car choice) ?c)
+	    (magscan-scan file 
+			  (if (or (= i 1)
+				  colour)
+			      "color"
+			    "gray"))
+	    (magscan-display file)
+	    (setq colour nil)))
+    ;; Rename the first file now that we know how long the issue was.
+    (rename-file (magscan-file issue "pre-fc-bc.png")
+		 (magscan-file
+		  issue (concat "pre-"
+				(format "%03d-%03d.png"
+					1 (* i 2)))))))
 
 (defun magscan-display (file)
+  (clear-image-cache)
   (pop-to-buffer "*scan*")
   (erase-buffer)
   (insert-image
    (create-image
     (with-temp-buffer
       (set-buffer-multibyte nil)
-      (call-process "convert" nil nil nil
-		    "-rotate" "-90"
-		    "-resize" "700x"
-		    file "jpg:-")
+      (call-process "convert" nil (current-buffer) nil
+		    "-rotate" "90"
+		    "-resize" "600x"
+		    (file-truename file) "jpg:-")
       (buffer-string))
     'jpeg t))
   (goto-char (point-min)))
+
+(defun magscan-split-page (file)
+  (let ((pages (cdr (split-string (replace-regexp-in-string
+				   ".png$" "" (file-name-nondirectory file))
+				  "-"))))
+    ;; The front/back covers are scanned in opposite order than all
+    ;; other pages.
+    (when (equal (car pages) "001")
+      (setq pages (nreverse pages)))
+    (call-process "convert" nil nil nil
+		  "-rotate" "90"
+		  "-crop" "1949x3064-0-0"
+		  (file-truename file)
+		  (expand-file-name (format "page-%s.png" (car pages))
+				    (file-name-directory file)))
+    (call-process "convert" nil nil nil
+		  "-rotate" "90"
+		  "-crop" "1949x3064+1949-0"
+		  (file-truename file)
+		  (expand-file-name (format "page-%s.png" (cadr pages))
+				    (file-name-directory file)))))
+
+(defun magscan-ocr (directory &optional dont-split)
+  (unless dont-split
+    (dolist (file (directory-files directory t "pre-.*png"))
+      (message "Splitting %s" file)
+      (magscan-split-page file)))
+  (dolist (file (directory-files directory t "page-.*png"))
+    (when (< (file-attribute-size (file-attributes file)) 4500000)
+      (message "OCR-ing %s" file)
+      (tcor-ocr file)))
+  (dolist (file (directory-files directory t "page-.*png"))
+    (call-process "convert" nil nil nil file
+		  (replace-regexp-in-string "[.]png\\'" ".jpg" file)))
+  (call-process "convert" nil nil nil
+		"-resize" "150x"
+		(expand-file-name "page-001.png" directory)
+		(let ((path (split-string (directory-file-name directory) "/")))
+		  (format "/var/www/html/covers/%s-%s.jpg"
+			  (car (last path 2))
+			  (car (last path 1))))))
+
+(defun magscan-ocr-new ()
+  ;; First do all new directories.
+  (dolist (dir (directory-files "~/magscan/AH/" t))
+    (when (and (file-directory-p dir)
+	       (null (directory-files dir nil "json")))
+      (magscan-ocr dir)))
+  ;; Then do any straggling files.
+  (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
+    (unless (file-exists-p (replace-regexp-in-string "[.]png$" ".json" file))
+      (tcor-ocr file))))      
 
 (provide 'magscan)
 
