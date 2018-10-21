@@ -48,7 +48,10 @@
 			   (car device) (cdr device)))))
 
 (defun magscan-file (issue spec)
-  (format "~/magscan/%s/%s/%s" magscan-magazine issue spec))
+  (format "~/magscan/%s/%03d/%s"
+	  magscan-magazine
+	  (string-to-number issue)
+	  spec))
 
 (defun magscan (issue)
   "Scan a magazine."
