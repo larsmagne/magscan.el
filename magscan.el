@@ -25,21 +25,27 @@
 
 (defvar magscan-magazine "AH")
 
+(defun magscan-find-device ()
+  (let ((bits (split-string (file-truename "/dev/epson") "/")))
+    (cons (car (last bits 2))
+	  (car (last bits 1)))))
+
 (defun magscan-scan (file mode)
-  (let ((major "001")
-	(minor "011"))
+  (let ((device (magscan-find-device)))
     (unless (file-exists-p (file-name-directory file))
       (make-directory (file-name-directory file) t))
     (call-process "/usr/slocal/bin/scanimage" nil (list :file file) nil
 		  (format "--mode=%s" mode)
-		  "-d" (format "epsonds:libusb:%s:%s" major minor)
+		  "-d" (format "epsonds:libusb:%s:%s" (car device)
+			       (cdr device))
 		  "--resolution" "300dpi"
 		  "--format=png"
 		  "-x" "260"
 		  "-y" "330")
     (start-process "reset" nil
 		   "~/src/usbreset/usbreset"
-		   (format "/dev/bus/usb/%s/%s" major minor))))
+		   (format "/dev/bus/usb/%s/%s"
+			   (car device) (cdr device)))))
 
 (defun magscan-file (issue spec)
   (format "~/magscan/%s/%s/%s" magscan-magazine issue spec))
@@ -161,6 +167,22 @@
   (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
     (unless (file-exists-p (replace-regexp-in-string "[.]png$" ".json" file))
       (tcor-ocr file))))      
+
+(defun magscan-mogrify-jpegs ()
+  (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
+    (message "%s" file)
+    (if (string-match "grayscale" (with-temp-buffer
+				    (call-process "file" nil (current-buffer)
+						  nil
+						  (expand-file-name file))
+				    (buffer-string)))
+	(call-process "convert" nil nil nil file
+		      "-level" "0%,45%"
+		      "-quality" "80"
+		      (replace-regexp-in-string "[.]png\\'" ".jpg" file))
+      (call-process "convert" nil nil nil file
+		    "-quality" "80"
+		    (replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
 (provide 'magscan)
 
