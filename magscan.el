@@ -147,8 +147,7 @@
     (message "OCR-ing %s" file)
     (tcor-ocr file))
   (dolist (file (directory-files directory t "page-.*png"))
-    (call-process "convert" nil nil nil file
-		  (replace-regexp-in-string "[.]png\\'" ".jpg" file)))
+    (magscan-mogrify-jpeg file))
   (call-process "convert" nil nil nil
 		"-resize" "150x"
 		(expand-file-name "page-001.png" directory)
@@ -171,18 +170,21 @@
 (defun magscan-mogrify-jpegs ()
   (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
     (message "%s" file)
-    (if (string-match "grayscale" (with-temp-buffer
-				    (call-process "file" nil (current-buffer)
-						  nil
-						  (expand-file-name file))
-				    (buffer-string)))
-	(call-process "convert" nil nil nil file
-		      "-level" "0%,45%"
-		      "-quality" "80"
-		      (replace-regexp-in-string "[.]png\\'" ".jpg" file))
+    (magscan-mogrify-jpeg file)))
+
+(defun magscan-mogrify-jpeg (file)
+  (if (string-match "grayscale" (with-temp-buffer
+				  (call-process "file" nil (current-buffer)
+						nil
+						(expand-file-name file))
+				  (buffer-string)))
       (call-process "convert" nil nil nil file
+		    "-level" "0%,45%"
 		    "-quality" "80"
-		    (replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
+		    (replace-regexp-in-string "[.]png\\'" ".jpg" file))
+    (call-process "convert" nil nil nil file
+		  "-quality" "80"
+		  (replace-regexp-in-string "[.]png\\'" ".jpg" file))))
 
 (provide 'magscan)
 
