@@ -71,12 +71,17 @@
 			'((?\r "Yes")
 			  (?q "Quit")
 			  (?c "Colour next")
-			  (?n "Redo previous")))
+			  (?n "Redo previous")
+			  (?p "Page number")))
 	  while (not (eql (car choice) ?q))
 	  when (eql (car choice) ?\r)
 	  do (incf i)
 	  when (eql (car choice) ?c)
 	  do (setq colour t)
+	  when (eql (car choice) ?p)
+	  do (setq i (let ((number (read-string "Page number: ")))
+		       (/ (+ (string-to-number number) 2)
+			  2)))			  
 	  do (setq file
 		   (magscan-file
 		    issue
