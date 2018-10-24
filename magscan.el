@@ -155,7 +155,7 @@
 		"-resize" "150x"
 		(expand-file-name "page-001.png" directory)
 		(let ((path (split-string (directory-file-name directory) "/")))
-		  (format "/var/www/html/covers/%s-%s.jpg"
+		  (format "/var/www/html/covers/AH/%s-%s.jpg"
 			  (car (last path 2))
 			  (car (last path 1))))))
 
