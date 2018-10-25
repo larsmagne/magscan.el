@@ -173,7 +173,8 @@
   ;; Then do any straggling files.
   (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
     (unless (file-exists-p (replace-regexp-in-string "[.]png$" ".json" file))
-      (tcor-ocr file))))      
+      (tcor-ocr file)))
+  (magscan-count-pages "~/magscan/AH/"))
 
 (defun magscan-mogrify-jpegs ()
   (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
@@ -193,6 +194,19 @@
     (call-process "convert" nil nil nil file
 		  "-quality" "80"
 		  (replace-regexp-in-string "[.]png\\'" ".jpg" file))))
+
+(defun magscan-count-pages (dir)
+  (let ((issues (make-hash-table :test #'equal)))
+    (dolist (issue (directory-files dir))
+      (let ((idir (expand-file-name issue dir)))
+	(when (and (file-directory-p idir)
+		   (not (member issue '("." ".."))))
+	  (setf (gethash issue issues)
+		(length (directory-files idir nil "page.*jpg"))))))
+    (with-temp-buffer
+      (insert (json-encode issues))
+      (write-region (point-min) (point-max)
+		    (expand-file-name "issues.json" dir)))))
 
 (provide 'magscan)
 
