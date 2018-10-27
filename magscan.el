@@ -166,6 +166,7 @@
 
 (defun magscan-cover (directory)
   (call-process "convert" nil nil nil
+		"-normalize"
 		"-resize" "150x"
 		(expand-file-name "page-001.png" directory)
 		(let ((path (split-string (directory-file-name directory) "/")))
@@ -201,8 +202,15 @@
 		    "-quality" "80"
 		    (replace-regexp-in-string "[.]png\\'" ".jpg" file))
     (call-process "convert" nil nil nil file
+		  "-normalize"
 		  "-quality" "80"
 		  (replace-regexp-in-string "[.]png\\'" ".jpg" file))))
+
+(defun magscan-redo-covers-jpegs ()
+  (dolist (file (directory-files "~/magscan/AH/" t))
+    (when (and (file-directory-p file)
+	       (not (member (file-name-nondirectory file) '("." ".."))))
+      (magscan-cover file))))
 
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal)))
