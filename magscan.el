@@ -162,6 +162,9 @@
     (tcor-ocr file))
   (dolist (file (directory-files directory t "page-.*png"))
     (magscan-mogrify-jpeg file))
+  (magscan-cover directory))
+
+(defun magscan-cover (directory)
   (call-process "convert" nil nil nil
 		"-resize" "150x"
 		(expand-file-name "page-001.png" directory)
