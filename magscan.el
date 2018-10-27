@@ -48,9 +48,11 @@
 			   (car device) (cdr device)))))
 
 (defun magscan-file (issue spec)
-  (format "~/magscan/%s/%03d/%s"
+  (format "~/magscan/%s/%s/%s"
 	  magscan-magazine
-	  (string-to-number issue)
+	  (if (string-match "\\`[0-9]+\\'" issue)
+	      (format "%03d" (string-to-number issue))
+	    issue)
 	  spec))
 
 (defun magscan (issue)
@@ -59,6 +61,10 @@
   (let ((i 0)
 	colour
 	file)
+    (when (and (file-exists-p (magscan-file issue ""))
+	       (not (y-or-n-p (format "%s exists.  Really rescan?"
+				      issue))))
+      (error "Already exists"))
     (loop for choice = (read-multiple-choice
 			(cond
 			 ((= i 0)
