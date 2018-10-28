@@ -55,10 +55,14 @@
 	    issue)
 	  spec))
 
-(defun magscan (issue)
-  "Scan a magazine."
-  (interactive "sIssue: ")
-  (let ((i 0)
+(defun magscan (issue &optional start)
+  "Scan a magazine.
+If START, start on that page."
+  (interactive "sIssue: \np")
+  (let ((i (if start
+	       (/ start 2)
+	     0))
+	(buffer (current-buffer))
 	colour
 	file)
     (when (and (file-exists-p (magscan-file issue ""))
@@ -113,7 +117,8 @@
 		 (magscan-file
 		  issue (concat "pre-"
 				(format "%03d-%03d.png"
-					1 (* i 2)))))))
+					1 (* i 2)))))
+    (pop-to-buffer buffer)))
 
 (defun magscan-display (file)
   (clear-image-cache)
