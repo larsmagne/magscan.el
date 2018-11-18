@@ -40,8 +40,11 @@
 			       (cdr device))
 		  "--resolution" "300dpi"
 		  "--format=png"
-		  "-x" "260"
-		  "-y" "330")
+		  ;; US comics size
+		  "-x" "260" "-y" "330"
+		  ;; Magazine size
+		  ;;"-x" "277" "-y" "416"
+		  )
     (start-process "reset" nil
 		   "~/src/usbreset/usbreset"
 		   (format "/dev/bus/usb/%s/%s"
@@ -66,6 +69,7 @@ If START, start on that page."
 	colour
 	file)
     (when (and (file-exists-p (magscan-file issue ""))
+	       (= start 1)
 	       (not (y-or-n-p (format "%s exists.  Really rescan?"
 				      issue))))
       (error "Already exists"))
@@ -130,29 +134,39 @@ If START, start on that page."
       (set-buffer-multibyte nil)
       (call-process "convert" nil (current-buffer) nil
 		    "-rotate" "90"
-		    "-resize" "600x"
+		    "-resize" (format "%sx" (- (frame-pixel-width) 30))
 		    (file-truename file) "jpg:-")
       (buffer-string))
     'jpeg t))
   (goto-char (point-min)))
 
+(defun magscan-image-size (file)
+  (prog1
+      (image-size (create-image file) t)
+    (clear-image-cache)))
+
 (defun magscan-split-page (file)
   (let ((pages (cdr (split-string (replace-regexp-in-string
 				   ".png$" "" (file-name-nondirectory file))
-				  "-"))))
+				  "-")))
+	(size (magscan-image-size file)))
     ;; The front/back covers are scanned in opposite order than all
     ;; other pages.
     (when (equal (car pages) "001")
       (setq pages (nreverse pages)))
     (call-process "convert" nil nil nil
 		  "-rotate" "90"
-		  "-crop" "1949x3064-0-0"
+		  "-crop" (format "%sx%s-0-0" (/ (cdr size) 2) (car size))
 		  (file-truename file)
 		  (expand-file-name (format "page-%s.png" (car pages))
 				    (file-name-directory file)))
     (call-process "convert" nil nil nil
 		  "-rotate" "90"
-		  "-crop" "1949x3064+1949-0"
+		  "-crop" (format "%sx%s+%s-0"
+				  (/ (cdr size) 2)
+				  (car size)
+				  (/ (cdr size) 2))
+		  ;; "1949x3064+1949-0"
 		  (file-truename file)
 		  (expand-file-name (format "page-%s.png" (cadr pages))
 				    (file-name-directory file)))))
@@ -183,6 +197,7 @@ If START, start on that page."
   ;; First do all new directories.
   (dolist (dir (directory-files "~/magscan/AH/" t))
     (when (and (file-directory-p dir)
+	       (not (member (file-name-nondirectory dir) '("." "..")))
 	       (null (directory-files dir nil "json")))
       (magscan-ocr dir)))
   ;; Then do any straggling files.
@@ -218,13 +233,22 @@ If START, start on that page."
       (magscan-cover file))))
 
 (defun magscan-count-pages (dir)
-  (let ((issues (make-hash-table :test #'equal)))
+  (let ((issues (make-hash-table :test #'equal))
+	(page1s (with-temp-buffer
+		  (when (file-exists-p (expand-file-name "page1.txt" dir))
+		    (insert-file-contents (expand-file-name "page1.txt" dir))
+		    (split-string (buffer-string) "\n" t)))))
     (dolist (issue (directory-files dir))
       (let ((idir (expand-file-name issue dir)))
 	(when (and (file-directory-p idir)
 		   (not (member issue '("." ".."))))
 	  (setf (gethash issue issues)
-		(length (directory-files idir nil "page.*jpg"))))))
+		(let ((elem (make-hash-table :test #'equal)))
+		  (setf (gethash "pages" elem)
+			(length (directory-files idir nil "page.*jpg")))
+		  (setf (gethash "page1" elem)
+			(not (not (member issue page1s))))
+		  elem)))))
     (with-temp-buffer
       (insert (json-encode issues))
       (write-region (point-min) (point-max)
