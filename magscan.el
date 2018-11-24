@@ -211,20 +211,38 @@ If START, start on that page."
     (message "%s" file)
     (magscan-mogrify-jpeg file)))
 
-(defun magscan-mogrify-jpeg (file)
+(defun magscan-mogrify-rotate ()
+  (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
+    (let* ((json (replace-regexp-in-string "[.]png$" ".json" file))
+	   (rotation
+	    (and (file-exists-p json)
+		 (with-temp-buffer
+		   (insert-file-contents json)
+		   (and (re-search-forward "TextOrientation.:.\\([0-9]+\\)"
+					   nil t)
+			(match-string 1))))))
+      (when (and rotation
+		 (not (equal rotation "0")))
+	(setq rotation (string-to-number rotation))
+	(message "%s" file)
+	(magscan-mogrify-jpeg file (format "%d" (- 360 rotation)))))))
+
+(defun magscan-mogrify-jpeg (file &optional rotation)
   (if (string-match "grayscale" (with-temp-buffer
 				  (call-process "file" nil (current-buffer)
 						nil
 						(expand-file-name file))
 				  (buffer-string)))
-      (call-process "convert" nil nil nil file
-		    "-level" "0%,45%"
-		    "-quality" "80"
-		    (replace-regexp-in-string "[.]png\\'" ".jpg" file))
-    (call-process "convert" nil nil nil file
-		  "-normalize"
-		  "-quality" "80"
-		  (replace-regexp-in-string "[.]png\\'" ".jpg" file))))
+      (apply #'call-process "convert" nil nil nil file
+	     `("-level" "0%,45%"
+	       "-quality" "80"
+	       ,@(and rotation (list "-rotate" rotation))
+	       ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))
+    (apply #'call-process "convert" nil nil nil file
+	   `("-normalize"
+	     "-quality" "80"
+	     ,@(and rotation (list "-rotate" rotation))
+	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
 (defun magscan-redo-covers-jpegs ()
   (dolist (file (directory-files "~/magscan/AH/" t))
@@ -234,10 +252,16 @@ If START, start on that page."
 
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal))
-	(page1s (with-temp-buffer
-		  (when (file-exists-p (expand-file-name "page1.txt" dir))
-		    (insert-file-contents (expand-file-name "page1.txt" dir))
-		    (split-string (buffer-string) "\n" t)))))
+	(suppressed
+	 (with-temp-buffer
+	   (when (file-exists-p (expand-file-name "suppress-covers.txt" dir))
+	     (insert-file-contents (expand-file-name "suppress-covers.txt" dir))
+	     (split-string (buffer-string) "\n" t))))
+	(page1s
+	 (with-temp-buffer
+	   (when (file-exists-p (expand-file-name "page1.txt" dir))
+	     (insert-file-contents (expand-file-name "page1.txt" dir))
+	     (split-string (buffer-string) "\n" t)))))
     (dolist (issue (directory-files dir))
       (let ((idir (expand-file-name issue dir)))
 	(when (and (file-directory-p idir)
@@ -248,6 +272,11 @@ If START, start on that page."
 			(length (directory-files idir nil "page.*jpg")))
 		  (setf (gethash "page1" elem)
 			(not (not (member issue page1s))))
+		  (when (member issue suppressed)
+		    (setf (gethash "no-flash-cover" elem) t))
+		  (setf (gethash "time" elem)
+			(truncate (float-time (file-attribute-modification-time
+					       (file-attributes idir)))))
 		  elem)))))
     (with-temp-buffer
       (insert (json-encode issues))
