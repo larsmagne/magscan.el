@@ -181,17 +181,26 @@ If START, start on that page."
     (tcor-ocr file))
   (dolist (file (directory-files directory t "page-.*png"))
     (magscan-mogrify-jpeg file))
-  (magscan-cover directory))
+  (magscan-cover directory "AH"))
 
-(defun magscan-cover (directory)
-  (call-process "convert" nil nil nil
-		"-normalize"
-		"-resize" "150x"
-		(expand-file-name "page-001.png" directory)
-		(let ((path (split-string (directory-file-name directory) "/")))
-		  (format "/var/www/html/covers/AH/%s-%s.jpg"
-			  (car (last path 2))
-			  (car (last path 1))))))
+(defun magscan-cover (directory mag)
+  (let ((dir (format "/var/www/html/covers/%s" mag)))
+    (unless (file-exists-p dir)
+      (make-directory dir))
+    (call-process
+     "convert" nil nil nil
+     "-normalize"
+     "-resize" "150x"
+     (let ((png (expand-file-name "page-001.png" directory)))
+       (if (file-exists-p png)
+	   png
+	 (expand-file-name "page-001.jpg" directory)))
+     (let ((path (split-string (directory-file-name directory) "/")))
+       (expand-file-name
+	(format "%s-%s.jpg"
+		(car (last path 2))
+		(car (last path 1)))
+	dir)))))
 
 (defun magscan-ocr-new ()
   ;; First do all new directories.
@@ -245,10 +254,12 @@ If START, start on that page."
 	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
 (defun magscan-redo-covers-jpegs ()
-  (dolist (file (directory-files "~/magscan/AH/" t))
-    (when (and (file-directory-p file)
-	       (not (member (file-name-nondirectory file) '("." ".."))))
-      (magscan-cover file))))
+  (dolist (mag '("TCJ" "AH"))
+    (dolist (file (directory-files (format "~/magscan/%s/" mag) t))
+      (when (and (file-directory-p file)
+		 (not (member (file-name-nondirectory file) '("." ".."))))
+	(magscan-cover file mag)))
+    (magscan-count-pages (format "~/magscan/%s/" mag))))
 
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal))
