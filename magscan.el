@@ -73,49 +73,49 @@ If START, start on that page."
 	       (not (y-or-n-p (format "%s exists.  Really rescan?"
 				      issue))))
       (error "Already exists"))
-    (loop for choice = (read-multiple-choice
+    (cl-loop for choice = (read-multiple-choice
+			   (cond
+			    ((= i 0)
+			     "Scan front and back cover")
+			    ((= i 1)
+			     "Scan inside front and page 3")
+			    (t
+			     (format "Scan page %d and %d"
+				     (- (* i 2) 0) (- (1+ (* i 2)) 0))))
+			   '((?\r "Yes")
+			     (?q "Quit")
+			     (?c "Colour next")
+			     (?n "Redo previous")
+			     (?p "Page number")))
+	     while (not (eql (car choice) ?q))
+	     when (eql (car choice) ?\r)
+	     do (cl-incf i)
+	     when (eql (car choice) ?c)
+	     do (setq colour t)
+	     when (eql (car choice) ?p)
+	     do (setq i (let ((number (read-string "Page number: ")))
+			  (/ (+ (string-to-number number) 2)
+			     2)))			  
+	     do (setq file
+		      (magscan-file
+		       issue
+		       (concat
+			"pre-"
 			(cond
-			 ((= i 0)
-			  "Scan front and back cover")
 			 ((= i 1)
-			  "Scan inside front and page 3")
+			  "fc-bc")
 			 (t
-			  (format "Scan page %d and %d"
-				  (- (* i 2) 0) (- (1+ (* i 2)) 0))))
-			'((?\r "Yes")
-			  (?q "Quit")
-			  (?c "Colour next")
-			  (?n "Redo previous")
-			  (?p "Page number")))
-	  while (not (eql (car choice) ?q))
-	  when (eql (car choice) ?\r)
-	  do (incf i)
-	  when (eql (car choice) ?c)
-	  do (setq colour t)
-	  when (eql (car choice) ?p)
-	  do (setq i (let ((number (read-string "Page number: ")))
-		       (/ (+ (string-to-number number) 2)
-			  2)))			  
-	  do (setq file
-		   (magscan-file
-		    issue
-		    (concat
-		     "pre-"
-		     (cond
-		      ((= i 1)
-		       "fc-bc")
-		      (t
-		       (format "%03d-%03d"
-			       (- (* i 2) 2) (- (1+ (* i 2)) 2))))
-		     ".png")))
-	  (unless (eql (car choice) ?c)
-	    (magscan-scan file 
-			  (if (or (= i 1)
-				  colour)
-			      "color"
-			    "gray"))
-	    (magscan-display file)
-	    (setq colour nil)))
+			  (format "%03d-%03d"
+				  (- (* i 2) 2) (- (1+ (* i 2)) 2))))
+			".png")))
+	     (unless (eql (car choice) ?c)
+	       (magscan-scan file 
+			     (if (or (= i 1)
+				     colour)
+				 "color"
+			       "gray"))
+	       (magscan-display file)
+	       (setq colour nil)))
     ;; Rename the first file now that we know how long the issue was.
     (rename-file (magscan-file issue "pre-fc-bc.png")
 		 (magscan-file
@@ -315,13 +315,14 @@ If START, start on that page."
     (dolist (file (directory-files dir nil ".jpg$"))
       (setq file (expand-file-name file dir))
       (if (string-match "fc\\|bc" file)
-	  (rename-file file (expand-file-name (format "page-%03d.jpg" (incf i))
-					      dir))
+	  (rename-file file (expand-file-name
+			     (format "page-%03d.jpg" (cl-incf i))
+			     dir))
 	(let ((size (magscan-image-size file)))
 	  (call-process "convert" nil nil nil
 			"-crop" (format "%sx%s+0+0" (/ (car size) 2) (cdr size))
 			(file-truename file)
-			(expand-file-name (format "page-%03d.jpg" (incf i))
+			(expand-file-name (format "page-%03d.jpg" (cl-incf i))
 					  dir))
 	  (call-process "convert" nil nil nil
 			"-crop" (format "%sx%s+%s-0"
@@ -330,7 +331,7 @@ If START, start on that page."
 					(/ (car size) 2))
 			;; "1949x3064+1949-0"
 			(file-truename file)
-			(expand-file-name (format "page-%03d.jpg" (incf i))
+			(expand-file-name (format "page-%03d.jpg" (cl-incf i))
 					  dir)))))))
 
 (provide 'magscan)
