@@ -142,7 +142,7 @@ If START, start on that page."
 
 (defun magscan-image-size (file)
   (prog1
-      (image-size (create-image file) t)
+      (image-size (create-image file nil nil :scale 1) t)
     (clear-image-cache)))
 
 (defun magscan-split-page (file)
@@ -184,7 +184,7 @@ If START, start on that page."
   (magscan-cover directory "AH"))
 
 (defun magscan-cover (directory mag)
-  (let ((dir (format "/var/www/html/covers/%s" mag)))
+  (let ((dir (format "~/src/kwakk/covers/%s" mag)))
     (unless (file-exists-p dir)
       (make-directory dir))
     (call-process
@@ -254,12 +254,12 @@ If START, start on that page."
 	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
 (defun magscan-redo-covers-jpegs ()
-  (dolist (mag '("TCJ" "AH"))
-    (dolist (file (directory-files (format "~/magscan/%s/" mag) t))
+  (let ((mag "CS"))
+    (dolist (file (directory-files "/var/tmp/cs/form/" t))
       (when (and (file-directory-p file)
 		 (not (member (file-name-nondirectory file) '("." ".."))))
 	(magscan-cover file mag)))
-    (magscan-count-pages (format "~/magscan/%s/" mag))))
+    (magscan-count-pages "/var/tmp/cs/form/")))
 
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal))
@@ -293,6 +293,45 @@ If START, start on that page."
       (insert (json-encode issues))
       (write-region (point-min) (point-max)
 		    (expand-file-name "issues.json" dir)))))
+
+(defun magscan-split-double (file)
+  (interactive (list (dired-file-name-at-point)))
+  (let ((size (magscan-image-size file)))
+    (call-process "convert" nil nil nil
+		  "-crop" (format "%sx%s+0+0" (/ (car size) 2) (cdr size))
+		  (file-truename file)
+		  (concat (file-name-sans-extension file) "-1.jpg"))
+    (call-process "convert" nil nil nil
+		  "-crop" (format "%sx%s+%s-0"
+				  (/ (car size) 2)
+				  (cdr size)
+				  (/ (car size) 2))
+		  ;; "1949x3064+1949-0"
+		  (file-truename file)
+		  (concat (file-name-sans-extension file) "-2.jpg"))))
+
+(defun magscan-split-doubles (dir)
+  (let ((i 0))
+    (dolist (file (directory-files dir nil ".jpg$"))
+      (setq file (expand-file-name file dir))
+      (if (string-match "fc\\|bc" file)
+	  (rename-file file (expand-file-name (format "page-%03d.jpg" (incf i))
+					      dir))
+	(let ((size (magscan-image-size file)))
+	  (call-process "convert" nil nil nil
+			"-crop" (format "%sx%s+0+0" (/ (car size) 2) (cdr size))
+			(file-truename file)
+			(expand-file-name (format "page-%03d.jpg" (incf i))
+					  dir))
+	  (call-process "convert" nil nil nil
+			"-crop" (format "%sx%s+%s-0"
+					(/ (car size) 2)
+					(cdr size)
+					(/ (car size) 2))
+			;; "1949x3064+1949-0"
+			(file-truename file)
+			(expand-file-name (format "page-%03d.jpg" (incf i))
+					  dir)))))))
 
 (provide 'magscan)
 
