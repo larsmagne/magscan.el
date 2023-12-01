@@ -254,12 +254,13 @@ If START, start on that page."
 	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
 (defun magscan-redo-covers-jpegs ()
-  (let ((mag "CS"))
-    (dolist (file (directory-files "/var/tmp/cs/form/" t))
+  (let* ((mag "CBG")
+	 (dir (format "~/src/kwakk/magscan/%s/" mag)))
+    (dolist (file (directory-files dir t))
       (when (and (file-directory-p file)
 		 (not (member (file-name-nondirectory file) '("." ".."))))
 	(magscan-cover file mag)))
-    (magscan-count-pages "/var/tmp/cs/form/")))
+    (magscan-count-pages dir)))
 
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal))
@@ -333,6 +334,54 @@ If START, start on that page."
 			(file-truename file)
 			(expand-file-name (format "page-%03d.jpg" (cl-incf i))
 					  dir)))))))
+
+(defun magscan-detect-and-split-mag (mag)
+  (let ((dir (concat "~/src/kwakk/magscan/" mag))
+	(ndir (concat "~/src/kwakk/magscan/n" mag)))
+    (dolist (issue (directory-files dir nil "[0-9]$"))
+      (magscan-detect-and-split-doubles
+       (expand-file-name issue dir)
+       (expand-file-name issue ndir)))))
+
+(defun magscan-detect-and-split-doubles (dir out-dir)
+  (message "%s" dir)
+  (unless (file-exists-p out-dir)
+    (make-directory out-dir t))
+  (let ((i 0))
+    (dolist (file (directory-files dir t "page.*.jpg$"))
+      (let ((size (magscan-image-size file)))
+	(if (< (car size) (cdr size))
+	    ;; Vertical
+	    (copy-file file (expand-file-name (format "page-%03d.jpg"
+						      (cl-incf i))
+					      out-dir))
+	  ;; Horizontal.
+	  (call-process "convert" nil nil nil
+			"-crop" (format "%sx%s+0+0" (/ (car size) 2) (cdr size))
+			(file-truename file)
+			(expand-file-name (format "page-%03d.jpg" (cl-incf i))
+					  out-dir))
+	  (call-process "convert" nil nil nil
+			"-crop" (format "%sx%s+%s-0"
+					(/ (car size) 2)
+					(cdr size)
+					(/ (car size) 2))
+			;; "1949x3064+1949-0"
+			(file-truename file)
+			(expand-file-name (format "page-%03d.jpg" (cl-incf i))
+					  out-dir)))))))
+
+(defun magscan-renumber-current-directory ()
+  (cl-loop for jpg in (directory-files "." nil "page-[0-9][0-9][0-9][.]jpg$")
+	   for num from 1
+	   do (progn
+		(rename-file jpg (format "page-%03d.jpg" num))
+		(when (file-exists-p (file-name-with-extension jpg "json"))
+		  (rename-file (file-name-with-extension jpg "json")
+			       (format "page-%03d.json" num)))
+		(when (file-exists-p (file-name-with-extension jpg "txt"))
+		  (rename-file (file-name-with-extension jpg "txt")
+			       (format "page-%03d.txt" num))))))
 
 (provide 'magscan)
 
