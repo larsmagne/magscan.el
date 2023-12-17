@@ -253,9 +253,8 @@ If START, start on that page."
 	     ,@(and rotation (list "-rotate" rotation))
 	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
-(defun magscan-redo-covers-jpegs ()
-  (let* ((mag "CBG")
-	 (dir (format "~/src/kwakk/magscan/%s/" mag)))
+(defun magscan-redo-covers-jpegs (mag)
+  (let* ((dir (format "~/src/kwakk/magscan/%s/" mag)))
     (dolist (file (directory-files dir t))
       (when (and (file-directory-p file)
 		 (not (member (file-name-nondirectory file) '("." ".."))))
