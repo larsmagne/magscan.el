@@ -382,6 +382,36 @@ If START, start on that page."
 		  (rename-file (file-name-with-extension jpg "txt")
 			       (format "page-%03d.txt" num))))))
 
+(defun magscan-create-url-map (mag)
+  (let ((table (make-hash-table :test #'equal))
+	(file (format "~/src/kwakk/covers/%s/url-map.txt" mag)))
+    (when (file-exists-p file)
+      (with-temp-buffer
+	(insert-file-contents file)
+	(while (not (eobp))
+	  (when (looking-at "\\([^ ]+\\) +\\(.*\\)")
+	    (setf (gethash (concat mag "-" (match-string 1)) table)
+		  (match-string 2)))
+	  (forward-line 1)))
+      (magscan-write-url-map file table)
+      table)))
+
+(defun magscan-write-url-map (file table)
+  (with-temp-buffer
+    (insert "var issueMap = "
+	    (json-encode table)
+	    ";\n")
+    (write-region (point-min) (point-max)
+		  (file-name-with-extension file ".js"))))
+
+(defun magscan-create-url-maps ()
+  (let ((table (make-hash-table :test #'equal)))
+    (dolist (mag (directory-files "~/src/kwakk/covers/"))
+      (when-let ((sub (magscan-create-url-map mag)))
+	(cl-loop for key being the hash-keys of sub
+		 do (setf (gethash key table) (gethash key sub)))))
+    (magscan-write-url-map "~/src/kwakk/covers/ALL/url-map.txt" table)))
+
 (provide 'magscan)
 
 ;;; magscan.el ends here
