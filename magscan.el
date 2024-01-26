@@ -34,7 +34,7 @@
   (let ((device (magscan-find-device)))
     (unless (file-exists-p (file-name-directory file))
       (make-directory (file-name-directory file) t))
-    (call-process "/usr/slocal/bin/scanimage" nil (list :file file) nil
+    (call-process "~/src/sane/backends/frontend/scanimage" nil (list :file file) nil
 		  (format "--mode=%s" mode)
 		  "-d" (format "epsonds:libusb:%s:%s" (car device)
 			       (cdr device))
@@ -83,12 +83,15 @@ If START, start on that page."
 			     (format "Scan page %d and %d"
 				     (- (* i 2) 0) (- (1+ (* i 2)) 0))))
 			   '((?\r "Yes")
+			     (?b "Yes")
 			     (?q "Quit")
 			     (?c "Colour next")
 			     (?n "Redo previous")
 			     (?p "Page number")))
 	     while (not (eql (car choice) ?q))
-	     when (eql (car choice) ?\r)
+	     when (or (eql (car choice) ?\r)
+		      ;; Pedal.
+		      (eql (car choice) ?\b))
 	     do (cl-incf i)
 	     when (eql (car choice) ?c)
 	     do (setq colour t)
@@ -137,7 +140,8 @@ If START, start on that page."
 		    "-resize" (format "%sx" (- (frame-pixel-width) 30))
 		    (file-truename file) "jpg:-")
       (buffer-string))
-    'jpeg t))
+    'jpeg t
+    :scale 1))
   (goto-char (point-min)))
 
 (defun magscan-image-size (file)
