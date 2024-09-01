@@ -30,35 +30,53 @@
     (cons (car (last bits 2))
 	  (car (last bits 1)))))
 
-(defun magscan-scan (file mode)
+(defun magscan-scan (file mode &optional magazine width height rotate)
   (let ((device (magscan-find-device)))
     (unless (file-exists-p (file-name-directory file))
       (make-directory (file-name-directory file) t))
-    (call-process "~/src/sane/backends/frontend/scanimage" nil (list :file file) nil
-		  (format "--mode=%s" mode)
-		  "-d" (format "epsonds:libusb:%s:%s" (car device)
-			       (cdr device))
-		  "--resolution" "300dpi"
-		  "--format=png"
-		  ;; US comics size
-		  "-x" "260" "-y" "330"
-		  ;; Magazine size
-		  ;;"-x" "277" "-y" "416"
-		  )
+    (apply #'call-process
+	   `("~/src/sane/backends/frontend/scanimage"
+	     nil ,(list (list :file file) nil) nil
+	     ,(format "--mode=%s" mode)
+	     "-d" ,(format "epsonds:libusb:%s:%s" (car device)
+			   (cdr device))
+	     "--resolution" "300dpi"
+	     "--format=png"
+	     ;; US comics size
+	     ;;,@(and (not magazine) (list "-x" "260" "-y" "332"))
+	     ,@(cond
+		((or width height)
+		 (list "-x" (format "%s" width) "-y" (format "%s" height)))
+		((not magazine)
+		 (list "-x" "260" "-y" "336"))
+		;; Magazine size
+		(t
+		 ;;(list "-x" "268" "-y" "418"))
+		 (list "-x" "280" "-y" "432")))))
     (start-process "reset" nil
 		   "~/src/usbreset/usbreset"
 		   (format "/dev/bus/usb/%s/%s"
-			   (car device) (cdr device)))))
+			   (car device) (cdr device)))
+    (when rotate
+      (call-process "mogrify" nil nil nil
+		    "-rotate" (format "%s" rotate)
+		    (expand-file-name file)))))
 
 (defun magscan-file (issue spec)
-  (format "~/magscan/%s/%s/%s"
+  (format "~/src/kwakk/magscan/%s/%s/%s"
 	  magscan-magazine
 	  (if (string-match "\\`[0-9]+\\'" issue)
 	      (format "%03d" (string-to-number issue))
 	    issue)
 	  spec))
 
-(defun magscan (issue &optional start)
+(defun magscan-magazine (issue &optional start)
+  "Scan a magazine.
+If START, start on that page."
+  (interactive "sIssue: \np")
+  (magscan issue start t))
+
+(defun magscan (issue &optional start magazine)
   "Scan a magazine.
 If START, start on that page."
   (interactive "sIssue: \np")
@@ -82,8 +100,7 @@ If START, start on that page."
 			    (t
 			     (format "Scan page %d and %d"
 				     (- (* i 2) 0) (- (1+ (* i 2)) 0))))
-			   '((?\r "Yes")
-			     (?b "Yes")
+			   '((?b "Yes")
 			     (?q "Quit")
 			     (?c "Colour next")
 			     (?n "Redo previous")
@@ -91,9 +108,10 @@ If START, start on that page."
 	     while (not (eql (car choice) ?q))
 	     when (or (eql (car choice) ?\r)
 		      ;; Pedal.
-		      (eql (car choice) ?\b))
+		      (eql (car choice) ?b))
 	     do (cl-incf i)
-	     when (eql (car choice) ?c)
+	     when (or (eql (car choice) ?c)
+		      (eql (car choice) ?b))
 	     do (setq colour t)
 	     when (eql (car choice) ?p)
 	     do (setq i (let ((number (read-string "Page number: ")))
@@ -116,7 +134,8 @@ If START, start on that page."
 			     (if (or (= i 1)
 				     colour)
 				 "color"
-			       "gray"))
+			       "gray")
+			     magazine)
 	       (magscan-display file)
 	       (setq colour nil)))
     ;; Rename the first file now that we know how long the issue was.
@@ -127,21 +146,55 @@ If START, start on that page."
 					1 (* i 2)))))
     (pop-to-buffer buffer)))
 
-(defun magscan-display (file)
+(defun magscan-single-pages (issue width height &optional start)
+  "Scan a magazine.
+If START, start on that page."
+  (interactive "sIssue: \nnWidth: \nnHeight: \np")
+  (let ((i start)
+	colour
+	file)
+    (when (and (file-exists-p (magscan-file issue ""))
+	       (= start 1)
+	       (not (y-or-n-p (format "%s exists.  Really rescan?"
+				      issue))))
+      (error "Already exists"))
+    (cl-loop for choice = (read-multiple-choice
+			   (format "Scan page %d" i)
+			   '((?b "Yes")
+			     (?q "Quit")
+			     (?c "Colour next")
+			     (?n "Redo previous")
+			     (?p "Page number")))
+	     while (not (eql (car choice) ?q))
+	     when (or (eql (car choice) ?c)
+		      (eql (car choice) ?b))
+	     do (setq colour t)
+	     when (eql (car choice) ?p)
+	     do (setq i (read-string "Page number: "))
+	     do (setq file (magscan-file issue (format "page-%03d.png" i)))
+	     (unless (eql (car choice) ?c)
+	       (magscan-scan file
+			     "color" nil
+			     width height 180)
+	       (magscan-display file 0)
+	       (setq colour nil))
+	     when (or (eql (car choice) ?\r)
+		      ;; Pedal.
+		      (eql (car choice) ?b))
+	     do (cl-incf i)
+	     )))
+
+(defun magscan-display (file &optional rotation)
   (clear-image-cache)
   (pop-to-buffer "*scan*")
   (erase-buffer)
   (insert-image
    (create-image
-    (with-temp-buffer
-      (set-buffer-multibyte nil)
-      (call-process "convert" nil (current-buffer) nil
-		    "-rotate" "90"
-		    "-resize" (format "%sx" (- (frame-pixel-width) 30))
-		    (file-truename file) "jpg:-")
-      (buffer-string))
-    'jpeg t
-    :scale 1))
+    file
+    nil nil
+    :max-height (- (window-pixel-width) 60)
+    :max-width (- (window-pixel-height) 60)
+    :rotation (or rotation 90)))
   (goto-char (point-min)))
 
 (defun magscan-image-size (file)
@@ -208,16 +261,12 @@ If START, start on that page."
 
 (defun magscan-ocr-new ()
   ;; First do all new directories.
-  (dolist (dir (directory-files "~/magscan/AH/" t))
+  (dolist (dir (directory-files "~/src/kwakk/magscan/IM/" t))
     (when (and (file-directory-p dir)
 	       (not (member (file-name-nondirectory dir) '("." "..")))
 	       (null (directory-files dir nil "json")))
       (magscan-ocr dir)))
-  ;; Then do any straggling files.
-  (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
-    (unless (file-exists-p (replace-regexp-in-string "[.]png$" ".json" file))
-      (tcor-ocr file)))
-  (magscan-count-pages "~/magscan/AH/"))
+  (magscan-count-pages "~/magscan/IM/"))
 
 (defun magscan-mogrify-jpegs ()
   (dolist (file (directory-files-recursively "~/magscan/AH/" "page.*png"))
@@ -257,13 +306,24 @@ If START, start on that page."
 	     ,@(and rotation (list "-rotate" rotation))
 	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
 
-(defun magscan-redo-covers-jpegs (mag)
-  (let* ((dir (format "~/src/kwakk/magscan/%s/" mag)))
+(defun magscan-covers-and-count ()
+  (dolist (mag (directory-files "~/src/kwakk/magscan/" nil "\\`[A-Z0-9]+\\'"))
+    (magscan-do-covers mag)))
+
+(defun magscan-do-covers (mag &optional force)
+  (let* ((dir (format "~/src/kwakk/magscan/%s/" mag))
+	 (got-new nil))
     (dolist (file (directory-files dir t))
       (when (and (file-directory-p file)
-		 (not (member (file-name-nondirectory file) '("." ".."))))
+		 (not (member (file-name-nondirectory file) '("." "..")))
+		 (or force
+		     (not (file-exists-p
+			   (format "~/src/kwakk/covers/%s/%s-%s.jpg"
+				   mag mag (file-name-nondirectory file))))))
+	(setq got-new t)
 	(magscan-cover file mag)))
-    (magscan-count-pages dir)))
+    (when got-new
+      (magscan-count-pages dir))))
 
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal))
