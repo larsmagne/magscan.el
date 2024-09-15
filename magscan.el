@@ -322,7 +322,7 @@ If START, start on that page."
 				   mag mag (file-name-nondirectory file))))))
 	(setq got-new t)
 	(magscan-cover file mag)))
-    (when got-new
+    (when (or got-new force)
       (magscan-count-pages dir))))
 
 (defun magscan-count-pages (dir)
@@ -475,6 +475,16 @@ If START, start on that page."
 	(cl-loop for key being the hash-keys of sub
 		 do (setf (gethash key table) (gethash key sub)))))
     (magscan-write-url-map "~/src/kwakk/covers/ALL/url-map.txt" table)))
+
+(defun magscan-move-first-to-last ()
+  (interactive)
+  (let ((first (car (directory-files "." t "page.*jpg"))))
+    (rename-file first "page-999.jpg")
+    (when (file-exists-p (file-name-with-extension first "txt"))
+      (rename-file (file-name-with-extension first "txt") "page-999.txt"))
+    (when (file-exists-p (file-name-with-extension first "json"))
+      (rename-file (file-name-with-extension first "json") "page-999.json")))
+  (magscan-renumber-current-directory))
 
 (provide 'magscan)
 
