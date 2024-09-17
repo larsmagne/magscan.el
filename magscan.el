@@ -332,11 +332,22 @@ If START, start on that page."
 	   (when (file-exists-p (expand-file-name "suppress-covers.txt" dir))
 	     (insert-file-contents (expand-file-name "suppress-covers.txt" dir))
 	     (split-string (buffer-string) "\n" t))))
+	(double
+	 (with-temp-buffer
+	   (when (file-exists-p (expand-file-name "double-issues.txt" dir))
+	     (insert-file-contents (expand-file-name "double-issues.txt" dir))
+	     (split-string (buffer-string) "\n" t))))
 	(page1s
 	 (with-temp-buffer
 	   (when (file-exists-p (expand-file-name "page1.txt" dir))
 	     (insert-file-contents (expand-file-name "page1.txt" dir))
 	     (split-string (buffer-string) "\n" t)))))
+    (dolist (issue double)
+      (setf (gethash issue issues)
+	    (let ((elem (make-hash-table :test #'equal)))
+	      (setf (gethash "no-flash-cover" elem) t)
+	      (setf (gethash "double" elem) t)
+	      elem)))
     (dolist (issue (directory-files dir))
       (let ((idir (expand-file-name issue dir)))
 	(when (and (file-directory-p idir)
