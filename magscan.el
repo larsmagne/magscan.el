@@ -312,10 +312,16 @@ If START, start on that page."
 
 (defun magscan-do-covers (mag &optional force)
   (let* ((dir (format "~/src/kwakk/magscan/%s/" mag))
+	 (sup (expand-file-name "suppress-covers.txt" dir))
+	 (denied (and (file-exists-p sup)
+		      (with-temp-buffer
+			(insert-file-contents sup)
+			(split-string (buffer-string) "\n"))))
 	 (got-new nil))
     (dolist (file (directory-files dir t))
       (when (and (file-directory-p file)
 		 (not (member (file-name-nondirectory file) '("." "..")))
+		 (not (member (file-name-nondirectory file) denied))
 		 (or force
 		     (not (file-exists-p
 			   (format "~/src/kwakk/covers/%s/%s-%s.jpg"
@@ -495,6 +501,13 @@ If START, start on that page."
       (rename-file (file-name-with-extension first "txt") "page-999.txt"))
     (when (file-exists-p (file-name-with-extension first "json"))
       (rename-file (file-name-with-extension first "json") "page-999.json")))
+  (when (file-exists-p (expand-file-name "issues.json" ".."))
+    (delete-file (expand-file-name "issues.json" "..")))
+  (let* ((mag (file-name-nondirectory (directory-file-name (expand-file-name "../"))))
+	 (cover (concat (format "~/src/kwakk/covers/%s/%s-%s.jpg"
+				mag (file-name-nondirectory (directory-file-name (expand-file-name "./")))))))
+    (when (file-exists-p cover)
+      (delete-file cover)))
   (magscan-renumber-current-directory))
 
 (provide 'magscan)
