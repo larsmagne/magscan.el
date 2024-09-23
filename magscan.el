@@ -317,16 +317,19 @@ If START, start on that page."
 		      (with-temp-buffer
 			(insert-file-contents sup)
 			(split-string (buffer-string) "\n"))))
-	 (got-new nil))
+	 (got-new nil)
+	 cover)
     (dolist (file (directory-files dir t))
+      (setq cover (format "~/src/kwakk/covers/%s/%s-%s.jpg"
+			  mag mag (file-name-nondirectory file)))
       (when (and (file-directory-p file)
 		 (not (member (file-name-nondirectory file) '("." "..")))
 		 (not (member (file-name-nondirectory file) denied))
 		 (or force
-		     (not (file-exists-p
-			   (format "~/src/kwakk/covers/%s/%s-%s.jpg"
-				   mag mag (file-name-nondirectory file))))))
+		     (not (file-exists-p cover))
+		     (file-newer-than-file-p file cover)))
 	(setq got-new t)
+	(message "Doing cover %s" file)
 	(magscan-cover file mag)))
     (when (or got-new force)
       (magscan-count-pages dir))))
