@@ -508,7 +508,8 @@ If START, start on that page."
     (delete-file (expand-file-name "issues.json" "..")))
   (let* ((mag (file-name-nondirectory (directory-file-name (expand-file-name "../"))))
 	 (cover (concat (format "~/src/kwakk/covers/%s/%s-%s.jpg"
-				mag (file-name-nondirectory (directory-file-name (expand-file-name "./")))))))
+				mag mag
+				(file-name-nondirectory (directory-file-name (expand-file-name "./")))))))
     (when (file-exists-p cover)
       (delete-file cover)))
   (magscan-renumber-current-directory))
