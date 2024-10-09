@@ -334,6 +334,24 @@ If START, start on that page."
     (when (or got-new force)
       (magscan-count-pages dir))))
 
+(defun magscan-create-entry-time-file (dir)
+  (with-temp-buffer
+    (insert-file-contents "~/src/kwakk/issue-times.txt")
+    (dolist (page (directory-files-recursively dir "page-001.jpg$"))
+      (goto-char (point-min))
+      (let ((id (magscan-issue-id page)))
+	(unless (search-forward (concat "\n" id) nil t)
+	  (goto-char (point-max))
+	  (insert id
+		  (format
+		   "%s"
+		   (truncate (float-time (file-attribute-modification-time
+					  (file-attributes
+					   (file-name-directory page))))))
+		  "\n"))))
+    (write-region (point-min) (point-max) "~/src/kwakk/issue-times.txt"
+		  nil 'silent)))
+
 (defun magscan-count-pages (dir)
   (let ((issues (make-hash-table :test #'equal))
 	(suppressed
@@ -357,6 +375,8 @@ If START, start on that page."
 	      (setf (gethash "no-flash-cover" elem) t)
 	      (setf (gethash "double" elem) t)
 	      elem)))
+    ;; Record earliest time the issue appeared.
+    (magscan-create-entry-time-file dir)
     (dolist (issue (directory-files dir))
       (let ((idir (expand-file-name issue dir)))
 	(when (and (file-directory-p idir)
@@ -370,13 +390,25 @@ If START, start on that page."
 		  (when (member issue suppressed)
 		    (setf (gethash "no-flash-cover" elem) t))
 		  (setf (gethash "time" elem)
-			(truncate (float-time (file-attribute-modification-time
-					       (file-attributes idir)))))
+			(magscan-issue-time idir))
 		  elem)))))
     (with-temp-buffer
       (insert (json-encode issues))
       (write-region (point-min) (point-max)
 		    (expand-file-name "issues.json" dir)))))
+
+(defun magscan-issue-id (page)
+  (concat (car (last (file-name-split page) 3))
+	  "/"
+	  (car (last (file-name-split page) 2))
+	  " "))
+
+(defun magscan-issue-time (dir)
+  (let ((id (magscan-issue-id (expand-file-name "page" dir))))
+    (with-temp-buffer
+      (insert-file-contents "~/src/kwakk/issue-times.txt")
+      (search-forward id)
+      (buffer-substring (point) (pos-eol)))))
 
 (defun magscan-split-double (file)
   (interactive (list (dired-file-name-at-point)))
@@ -454,17 +486,32 @@ If START, start on that page."
 			(expand-file-name (format "page-%03d.jpg" (cl-incf i))
 					  out-dir)))))))
 
-(defun magscan-renumber-current-directory ()
+(defun magscan-renumber-current-directory (&optional start)
+  (make-directory "r")
   (cl-loop for jpg in (directory-files "." nil "page-[0-9][0-9][0-9][.]jpg$")
-	   for num from 1
+	   for num from (or start 1)
 	   do (progn
-		(rename-file jpg (format "page-%03d.jpg" num))
+		(rename-file jpg (format "r/page-%03d.jpg" num))
 		(when (file-exists-p (file-name-with-extension jpg "json"))
 		  (rename-file (file-name-with-extension jpg "json")
-			       (format "page-%03d.json" num)))
+			       (format "r/page-%03d.json" num)))
 		(when (file-exists-p (file-name-with-extension jpg "txt"))
 		  (rename-file (file-name-with-extension jpg "txt")
-			       (format "page-%03d.txt" num))))))
+			       (format "r/page-%03d.txt" num)))))
+  (dolist (file (directory-files "r" nil "page"))
+    (rename-file (concat "r/" file) file))
+  (delete-directory "r"))
+
+(defun magscan-concatenate-pages (first)
+  (interactive (list (dired-file-name-at-point)))
+  (let ((second (save-excursion
+		  (forward-line 1)
+		  (dired-file-name-at-point))))
+    (call-process "convert" nil nil nil
+		  (expand-file-name first) (expand-file-name second)
+		  "+append" "out.jpg")
+    (rename-file "out.jpg" first t)
+    (delete-file second)))
 
 (defun magscan-create-url-map (mag)
   (let ((table (make-hash-table :test #'equal))
