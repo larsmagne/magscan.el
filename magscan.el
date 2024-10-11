@@ -206,7 +206,7 @@ If START, start on that page."
   (let ((pages (cdr (split-string (replace-regexp-in-string
 				   ".png$" "" (file-name-nondirectory file))
 				  "-")))
-	(size (magscan-image-size file)))
+	(size (tcor-image-size file)))
     ;; The front/back covers are scanned in opposite order than all
     ;; other pages.
     (when (equal (car pages) "001")
@@ -412,7 +412,7 @@ If START, start on that page."
 
 (defun magscan-split-double (file)
   (interactive (list (dired-file-name-at-point)))
-  (let ((size (magscan-image-size file)))
+  (let ((size (tcor-image-size file)))
     (call-process "convert" nil nil nil
 		  "-crop" (format "%sx%s+0+0" (/ (car size) 2) (cdr size))
 		  (file-truename file)
@@ -434,7 +434,7 @@ If START, start on that page."
 	  (rename-file file (expand-file-name
 			     (format "page-%03d.jpg" (cl-incf i))
 			     dir))
-	(let ((size (magscan-image-size file)))
+	(let ((size (tcor-image-size file)))
 	  (call-process "convert" nil nil nil
 			"-crop" (format "%sx%s+0+0" (/ (car size) 2) (cdr size))
 			(file-truename file)
@@ -464,7 +464,7 @@ If START, start on that page."
     (make-directory out-dir t))
   (let ((i 0))
     (dolist (file (directory-files dir t "page.*.jpg$"))
-      (let ((size (magscan-image-size file)))
+      (let ((size (tcor-image-size file)))
 	(if (< (car size) (cdr size))
 	    ;; Vertical
 	    (copy-file file (expand-file-name (format "page-%03d.jpg"
