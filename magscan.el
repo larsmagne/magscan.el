@@ -23,7 +23,7 @@
 (require 'rmc)
 (require 'tcor)
 
-(defvar magscan-magazine "KX")
+(defvar magscan-magazine "CI")
 
 (defun magscan-find-device ()
   (let ((bits (split-string (file-truename "/dev/epson") "/")))
@@ -36,7 +36,7 @@
       (make-directory (file-name-directory file) t))
     (apply #'call-process
 	   `("~/src/sane/backends/frontend/scanimage"
-	     nil ,(list (list :file file) nil) nil
+	     nil ,(list (list :file file) "scan output") nil
 	     ,(format "--mode=%s" mode)
 	     "-d" ,(format "epsonds:libusb:%s:%s" (car device)
 			   (cdr device))
@@ -94,7 +94,8 @@
 				   'magazine--width-history))
 		     (string-to-number
 		      (read-string "Height: " (car magazine--height-history)
-				   'magazine--height-history))))
+				   'magazine--height-history))
+		     (and current-prefix-arg (prefix-numeric-value current-prefix-arg))))
   (setq magscan-magazine mag)
   (magscan issue start nil width height))
 
