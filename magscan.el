@@ -23,7 +23,7 @@
 (require 'rmc)
 (require 'tcor)
 
-(defvar magscan-magazine "CI")
+(defvar magscan-magazine "CSN")
 
 (defun magscan-find-device ()
   (let ((bits (split-string (file-truename "/dev/epson") "/")))
@@ -109,12 +109,13 @@ If START, start on that page."
   "Scan a magazine.
 If START, start on that page."
   (interactive "sIssue: \np")
-  (let ((i (if start
-	       (/ start 2)
-	     0))
-	(buffer (current-buffer))
-	(colour t)
-	file)
+  (let* ((i (if start
+		(/ start 2)
+	      0))
+	 (default-colour t)
+	 (buffer (current-buffer))
+	 (colour t)
+	 file)
     (when (and (file-exists-p (magscan-file issue ""))
 	       (= (or start 1) 1)
 	       (not (y-or-n-p (format "%s exists.  Really rescan?"
@@ -132,6 +133,7 @@ If START, start on that page."
 			   '((?b "Yes")
 			     (?q "Quit")
 			     (?c "Colour next")
+			     (?2 "Colour next")
 			     (?w "Black and white next")
 			     (?n "Redo previous")
 			     (?p "Page number")))
@@ -140,7 +142,8 @@ If START, start on that page."
 		      ;; Pedal.
 		      (eql (car choice) ?b))
 	     do (cl-incf i)
-	     when (eql (car choice) ?c)
+	     when (or (eql (car choice) ?c)
+		      (eql (car choice) ?2))
 	     do (setq colour t)
 	     when (eql (car choice) ?w)
 	     do (setq colour nil)
@@ -160,14 +163,14 @@ If START, start on that page."
 			  (format "%03d-%03d"
 				  (- (* i 2) 2) (- (1+ (* i 2)) 2))))
 			".png")))
-	     (unless (member (car choice) '(?c ?w))
+	     (unless (member (car choice) '(?c ?w ?2))
 	       (magscan-scan file 
 			     (if colour
 				 "color"
 			       "gray")
 			     magazine height (and width (* width 2)))
 	       (magscan-display file)
-	       (setq colour nil)))
+	       (setq colour default-colour)))
     ;; Rename the first file now that we know how long the issue was.
     (rename-file (magscan-file issue "pre-fc-bc.png")
 		 (magscan-file
@@ -197,6 +200,7 @@ If START, start on that page."
   "Scan a magazine.
 If START, start on that page."
   (interactive "sIssue: \nnWidth: \nnHeight: \np")
+  (setq start (or start 1))
   (let ((i start)
 	colour
 	file)
@@ -228,8 +232,7 @@ If START, start on that page."
 	     when (or (eql (car choice) ?\r)
 		      ;; Pedal.
 		      (eql (car choice) ?b))
-	     do (cl-incf i)
-	     )))
+	     do (cl-incf i))))
 
 (defun magscan-display (file &optional rotation)
   (clear-image-cache)
@@ -242,8 +245,8 @@ If START, start on that page."
      (create-image
       file
       nil nil
-      :max-height (- (window-pixel-width) 60)
-      :max-width (- (window-pixel-height) 60)
+      :max-height (- (window-pixel-height) 60)
+      :max-width (- (window-pixel-width) 60)
       :rotation (or rotation 90)))
     (goto-char (point-min))
     (special-mode)))
@@ -312,6 +315,7 @@ If START, start on that page."
     (when (and (file-directory-p dir)
 	       (not (member (file-name-nondirectory dir) '("." "..")))
 	       (null (directory-files dir nil "json")))
+      (message "Splitting %s" dir)
       (magscan-split dir))))
 
 (defun magscan-mogrify (mag)
@@ -457,7 +461,7 @@ If START, start on that page."
   (let ((id (magscan-issue-id (expand-file-name "page" dir))))
     (with-temp-buffer
       (insert-file-contents "~/src/kwakk/issue-times.txt")
-      (search-forward id)
+      (search-forward (concat "\n" id))
       (buffer-substring (point) (pos-eol)))))
 
 (defun magscan-split-double (file)
@@ -611,42 +615,99 @@ If START, start on that page."
       (delete-file cover)))
   (magscan-renumber-current-directory))
 
-(defun magscan-pack-magazine (mag &optional outside)
-  (dolist (dir (directory-files (format (if outside
-					    "~/magscan/%s/"
-					  "~/src/kwakk/magscan/%s/")
-					mag)
-				t "[0-9]$"))
+(defun magscan-pack (files)
+  (interactive (list (dired-get-marked-files nil current-prefix-arg)))
+  (magscan-pack-magazine (file-name-nondirectory (directory-file-name (file-name-directory (car files))))
+			 nil files))
+
+(defun magscan-pack-magazine (mag &optional outside files make-small)
+  (dolist (dir (or files
+		   (directory-files (format (if outside
+						"~/magscan/%s/"
+					      "~/src/kwakk/magscan/%s/")
+					    mag)
+				    t "[0-9]$")))
     (let* ((pages (directory-files dir nil "page-.*jpg"))
 	   (issue (file-name-nondirectory dir))
 	   (mags (tcor-magazines))
 	   (default-directory dir)
 	   (cbr (expand-file-name
-		 (format "../[US Mag] %s %s (Softheads).cbr"
+		 (format "%s %s.cbr"
 			 (cdr (assq 'name (cdr (assq (intern mag) mags))))
 			 (if (string-match "\\`[0-9]+\\'" issue)
 			     (format "#%d" (string-to-number issue))
 			   issue))
-		 dir)))
+		 "~/src/kwakk/upload/")))
       (message "Issue: %s" issue)
       (unless (file-exists-p cbr)
 	(apply #'call-process "rar" nil nil nil "a" cbr pages)
-	(let ((width 2000)
-	      (png-pages (directory-files dir nil "page-.*png")))
-	  (while (> (file-attribute-size (file-attributes cbr)) 100000000)
-	    (message "%s is big" cbr)
-	    (unless (file-exists-p "/tmp/pack")
-	      (make-directory "/tmp/pack"))
-	    (dolist (page png-pages)
-	      (call-process "convert" nil nil nil
-			    "-resize" (format "%dx" width)
-			    page (expand-file-name (file-name-with-extension page "jpg")
-						   "/tmp/pack")))
-	    (message "Repackaging %s for %s" issue width)
-	    (let ((default-directory "/tmp/pack/"))
-	      (delete-file cbr)
-	      (apply #'call-process "rar" nil (get-buffer-create "*rar*") nil "a" cbr pages)
-	      (cl-decf width 200))))))))
+	(when make-small
+	  (let* ((png-pages (directory-files dir nil "page-.*png"))
+		 (ratio (/ (file-attribute-size (file-attributes cbr))
+			   100000000.0))
+		 (width (max 1000 (truncate (/ (car (tcor-image-size (car png-pages))) ratio)))))
+	    (while (> (file-attribute-size (file-attributes cbr)) 100000000)
+	      (unless (string-match-p "-small.cbr" cbr)
+		(setq cbr (replace-regexp-in-string ".cbr\\'" "-small.cbr" cbr)))
+	      (message "%s is big; rescaling to width %s" cbr width)
+	      (unless (file-exists-p "/tmp/pack")
+		(make-directory "/tmp/pack"))
+	      (dolist (page png-pages)
+		(call-process "convert" nil nil nil
+			      "-resize" (format "%dx" width)
+			      page (expand-file-name (file-name-with-extension page "jpg")
+						     "/tmp/pack")))
+	      (message "Repackaging %s for %s" issue width)
+	      (let ((default-directory "/tmp/pack/"))
+		(when (file-exists-p cbr)
+		  (delete-file cbr))
+		(apply #'call-process "rar" nil (get-buffer-create "*rar*") nil "a" cbr pages)
+		(cl-decf width 200)))))))))
+
+(defun magscan-csn (files)
+  (interactive (list (dired-get-marked-files nil current-prefix-arg)))
+  (dolist (dir files)
+    (magscan-split-csn dir)))
+
+(defun magscan-split-csn (dir)
+  (let* ((whole (car (last (directory-files dir t "page.*png"))))
+	 (size (tcor-image-size whole)))
+    (call-process "convert" nil nil nil
+		  "-crop" (format "%sx%s-0-0" (car size) (/ (cdr size) 2))
+		  "-rotate" "90"
+		  (file-truename whole)
+		  (expand-file-name "page-000.png"
+				    (file-name-directory whole)))
+    (call-process "convert" nil nil nil
+		  "-crop" (format "%sx%s+0+%s"
+				  (car size) (/ (cdr size) 2)
+				  (1- (/ (cdr size) 2)))
+		  "-rotate" "90"
+		  (file-truename whole)
+		  (expand-file-name "page-999.png"
+				    (file-name-directory whole)))
+    (rename-file whole (expand-file-name "cover.png" dir))
+    (rename-file (expand-file-name "page-999.png"
+				   (file-name-directory whole))
+		 whole)
+    (let ((default-directory dir))
+      (magscan-renumber-current-png-directory))))
+
+(defun magscan-renumber-current-png-directory (&optional start)
+  (make-directory "r")
+  (cl-loop for png in (directory-files "." nil "page-[0-9][0-9][0-9][.]png$")
+	   for num from (or start 1)
+	   do (progn
+		(rename-file png (format "r/page-%03d.png" num))
+		(when (file-exists-p (file-name-with-extension png "json"))
+		  (rename-file (file-name-with-extension png "json")
+			       (format "r/page-%03d.json" num)))
+		(when (file-exists-p (file-name-with-extension png "txt"))
+		  (rename-file (file-name-with-extension png "txt")
+			       (format "r/page-%03d.txt" num)))))
+  (dolist (file (directory-files "r" nil "page"))
+    (rename-file (concat "r/" file) file))
+  (delete-directory "r"))
 
 (provide 'magscan)
 
