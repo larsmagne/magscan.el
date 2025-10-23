@@ -245,8 +245,14 @@ If START, start on that page."
      (create-image
       file
       nil nil
-      :max-height (- (window-pixel-height) 60)
-      :max-width (- (window-pixel-width) 60)
+      :max-height (- (if rotation
+			 (window-pixel-height)
+		       (window-pixel-width))
+		     60)
+      :max-width (- (if rotation
+			(window-pixel-width)
+		      (window-pixel-height))
+		    60)
       :rotation (or rotation 90)))
     (goto-char (point-min))
     (special-mode)))
