@@ -212,17 +212,18 @@ If START, start on that page."
 			   (format "Scan page %d" i)
 			   '((?b "Yes")
 			     (?q "Quit")
+			     (?2 "Colour next")
 			     (?c "Colour next")
 			     (?n "Redo previous")
 			     (?p "Page number")))
 	     while (not (eql (car choice) ?q))
 	     when (or (eql (car choice) ?c)
-		      (eql (car choice) ?b))
+		      (eql (car choice) ?2))
 	     do (setq colour t)
 	     when (eql (car choice) ?p)
 	     do (setq i (read-string "Page number: "))
 	     do (setq file (magscan-file issue (format "page-%03d.png" i)))
-	     (unless (eql (car choice) ?c)
+	     (unless (memq (car choice) '(?c ?2))
 	       (magscan-scan file
 			     (if colour
 				 "color"
