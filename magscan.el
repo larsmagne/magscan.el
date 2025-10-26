@@ -19,7 +19,6 @@
 
 ;;; Code:
 
-(require 'cl)
 (require 'rmc)
 (require 'tcor)
 
@@ -225,7 +224,10 @@ If START, start on that page."
 	     do (setq file (magscan-file issue (format "page-%03d.png" i)))
 	     (unless (eql (car choice) ?c)
 	       (magscan-scan file
-			     "color" nil
+			     (if colour
+				 "color"
+			       "gray")
+			     nil
 			     width height 180)
 	       (magscan-display file 0)
 	       (setq colour nil))
