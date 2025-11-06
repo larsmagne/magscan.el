@@ -22,7 +22,7 @@
 (require 'rmc)
 (require 'tcor)
 
-(defvar magscan-magazine "CSN")
+(defvar magscan-magazine "CBG")
 
 (defun magscan-find-device ()
   (let ((bits (split-string (file-truename "/dev/epson") "/")))
@@ -111,7 +111,7 @@ If START, start on that page."
   (let* ((i (if start
 		(/ start 2)
 	      0))
-	 (default-colour t)
+	 (default-colour nil)
 	 (buffer (current-buffer))
 	 (colour t)
 	 file)
@@ -195,14 +195,25 @@ If START, start on that page."
     (magscan-mogrify-jpeg file)
     (magscan-display (file-name-with-extension file "jpg") 0)))
 
-(defun magscan-single-pages (issue width height &optional start)
+(defvar magscan-page-number 1208)
+
+(defun magscan-next-single-pages ()
+  (interactive)
+  (cl-incf magscan-page-number)
+  (while (not (y-or-n-p (format "Is it number %d?" magscan-page-number)))
+    (cl-incf magscan-page-number))
+  (magscan-single-pages (format "%d" magscan-page-number)
+			279 305 nil t))
+
+(defun magscan-single-pages (issue width height &optional start rotate-even)
   "Scan a magazine.
 If START, start on that page."
   (interactive "sIssue: \nnWidth: \nnHeight: \np")
   (setq start (or start 1))
-  (let ((i start)
-	colour
-	file)
+  (let* ((i start)
+	 (default-colour nil)
+	 (colour t)
+	 file)
     (when (and (file-exists-p (magscan-file issue ""))
 	       (= (or start 1) 1)
 	       (not (y-or-n-p (format "%s exists.  Really rescan?"
@@ -220,16 +231,18 @@ If START, start on that page."
 	     when (or (eql (car choice) ?c)
 		      (eql (car choice) ?2))
 	     do (setq colour t)
+	     when (eql (car choice) ?n)
+	     do (cl-decf i)
 	     when (eql (car choice) ?p)
 	     do (setq i (read-string "Page number: "))
 	     do (setq file (magscan-file issue (format "page-%03d.png" i)))
-	     (unless (memq (car choice) '(?c ?2))
+	     (unless (memq (car choice) '(?c ?2 ?n))
 	       (magscan-scan file
 			     (if colour
 				 "color"
 			       "gray")
 			     nil
-			     width height 180)
+			     width height (if (cl-evenp i) 0 180))
 	       (magscan-display file 0)
 	       (setq colour nil))
 	     when (or (eql (car choice) ?\r)
@@ -555,6 +568,9 @@ If START, start on that page."
 	   for num from (or start 1)
 	   do (progn
 		(rename-file jpg (format "r/page-%03d.jpg" num))
+		(let ((words (replace-regexp-in-string ".jpg\\'" "-words.json" jpg)))
+		  (when (file-exists-p words)
+		    (rename-file words (format "r/page-%03d-words.json" num))))
 		(when (file-exists-p (file-name-with-extension jpg "json"))
 		  (rename-file (file-name-with-extension jpg "json")
 			       (format "r/page-%03d.json" num)))
@@ -612,6 +628,9 @@ If START, start on that page."
     (rename-file first "page-999.jpg")
     (when (file-exists-p (file-name-with-extension first "txt"))
       (rename-file (file-name-with-extension first "txt") "page-999.txt"))
+    (let ((words (replace-regexp-in-string ".jpg\\'" "-words.json" first)))
+      (when (file-exists-p words)
+	(rename-file words "page-999-words.json")))
     (when (file-exists-p (file-name-with-extension first "json"))
       (rename-file (file-name-with-extension first "json") "page-999.json")))
   (when (file-exists-p (expand-file-name "issues.json" ".."))
