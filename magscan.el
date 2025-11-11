@@ -346,22 +346,26 @@ If START, start on that page."
       (magscan-mogrify-jpeg file))))
 
 (defun magscan-mogrify-jpeg (file &optional rotation)
-  (if (string-match "grayscale" (with-temp-buffer
-				  (call-process "file" nil (current-buffer)
-						nil
-						(expand-file-name file))
-				  (buffer-string)))
+  (setq file (expand-file-name file))
+  (let ((jpg (file-name-with-extension file "jpg")))
+    (when (file-exists-p jpg)
+      (delete-file jpg))
+    (if (string-match "grayscale" (with-temp-buffer
+				    (call-process "file" nil (current-buffer)
+						  nil
+						  (expand-file-name file))
+				    (buffer-string)))
+	(apply #'call-process "convert" nil nil nil file
+	       `(;;"-level" "0%,75%"
+		 "-level" "0%,85%"
+		 "-quality" "80"
+		 ,@(and rotation (list "-rotate" rotation))
+		 ,jpg))
       (apply #'call-process "convert" nil nil nil file
-	     `(;;"-level" "0%,75%"
-	       "-level" "0%,85%"
+	     `("-normalize"
 	       "-quality" "80"
 	       ,@(and rotation (list "-rotate" rotation))
-	       ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))
-    (apply #'call-process "convert" nil nil nil file
-	   `("-normalize"
-	     "-quality" "80"
-	     ,@(and rotation (list "-rotate" rotation))
-	     ,(replace-regexp-in-string "[.]png\\'" ".jpg" file)))))
+	       ,jpg)))))
 
 (defun magscan-covers-and-count ()
   (dolist (mag (directory-files "~/src/kwakk/magscan/" nil "\\`[A-Z0-9]+\\'"))
