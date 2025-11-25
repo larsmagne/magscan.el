@@ -195,7 +195,7 @@ If START, start on that page."
     (magscan-mogrify-jpeg file)
     (magscan-display (file-name-with-extension file "jpg") 0)))
 
-(defvar magscan-page-number 1208)
+(defvar magscan-page-number 943)
 
 (defun magscan-next-single-pages ()
   (interactive)
@@ -203,7 +203,9 @@ If START, start on that page."
   (while (not (y-or-n-p (format "Is it number %d?" magscan-page-number)))
     (cl-incf magscan-page-number))
   (magscan-single-pages (format "%d" magscan-page-number)
-			279 305 nil t))
+			292 430 ; Three digit newspaper CBG (old)
+			;; 279 305 ; Modern newspaper CBG
+			nil t))
 
 (defun magscan-single-pages (issue width height &optional start rotate-even)
   "Scan a magazine.
