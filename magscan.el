@@ -626,6 +626,8 @@ If START, start on that page."
       (when-let ((sub (magscan-create-url-map mag)))
 	(cl-loop for key being the hash-keys of sub
 		 do (setf (gethash key table) (gethash key sub)))))
+    (unless (file-exists-p "~/src/kwakk/covers/ALL/")
+      (make-directory "~/src/kwakk/covers/ALL/" t))
     (magscan-write-url-map "~/src/kwakk/covers/ALL/url-map.txt" table)))
 
 (defun magscan-move-first-to-last ()
