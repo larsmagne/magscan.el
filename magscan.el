@@ -672,6 +672,27 @@ If START, start on that page."
 (defun magscan--identifier (name)
   (replace-regexp-in-string " " "-" (replace-regexp-in-string "[^-a-z0-9 ]" "" (downcase name))))
 
+(defun magscan-magazine-name (mag issue)
+  (let* ((mags (tcor-magazines))
+	 (data (cdr (assq (intern mag) mags)))
+	 (digits (or (cdr (assq 'digits data)) 3))
+	 prefix)
+    (when (string-match "[A-Z]" issue)
+      (setq prefix (substring issue 0 (- (length issue) digits))
+	    issue (substring issue (- (length issue) digits))))
+    (replace-regexp-in-string
+     "," ""
+     (concat
+      (if (assq 'misc data)
+	  (cdr (assq (intern prefix) (cdr (assoc 'prefix data))))
+	(cdr (assq 'name data)))
+      " "
+      (if (and prefix
+	       (not (assq 'misc data)))
+	  (concat (cdr (assq (intern prefix) (cdr (assoc 'prefix data)))) " ")
+	"")
+      (format "#%d" (string-to-number issue))))))
+
 (defun magscan-pack-magazine (mag &optional outside files make-small)
   (cl-loop
    for dir in (or files
@@ -683,15 +704,8 @@ If START, start on that page."
    collect
    (let* ((pages (directory-files dir nil "page-.*jpg"))
 	  (issue (file-name-nondirectory dir))
-	  (mags (tcor-magazines))
 	  (default-directory dir)
-	  (name (replace-regexp-in-string
-		 "," ""
-		 (format "%s %s"
-			 (cdr (assq 'name (cdr (assq (intern mag) mags))))
-			 (if (string-match "\\`[0-9]+\\'" issue)
-			     (format "#%d" (string-to-number issue))
-			   issue))))
+	  (name (magscan-magazine-name mag issue))
 	  (cbr (expand-file-name (concat name ".cbr") "~/src/kwakk/upload/")))
      (message "Issue: %s" issue)
      (unless (file-exists-p cbr)
