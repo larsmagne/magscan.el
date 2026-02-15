@@ -33,29 +33,32 @@
   (let ((device (magscan-find-device)))
     (unless (file-exists-p (file-name-directory file))
       (make-directory (file-name-directory file) t))
-    (apply #'call-process
-	   `("~/src/sane/backends/frontend/scanimage"
-	     nil ,(list (list :file file) "scan output") nil
-	     ,(format "--mode=%s" mode)
-	     "-d" ,(format "epsonds:libusb:%s:%s" (car device)
-			   (cdr device))
-	     "--resolution" "300dpi"
-	     "--format=png"
-	     ;; US comics size
-	     ;;,@(and (not magazine) (list "-x" "260" "-y" "332"))
-	     ,@(cond
-		((or width height)
-		 (list "-x" (format "%s" width) "-y" (format "%s" height)))
-		((not magazine)
-		 (list "-x" "260" "-y" "336"))
-		;; Magazine size
-		(t
-		 ;;(list "-x" "268" "-y" "418"))
-		 (list "-x" "280" "-y" "432")))))
-    (start-process "reset" nil
-		   "~/src/usbreset/usbreset"
-		   (format "/dev/bus/usb/%s/%s"
-			   (car device) (cdr device)))
+    (unless
+	(zerop 
+	 (apply #'call-process
+		`("~/src/sane/backends/frontend/scanimage"
+		  nil ,(list (list :file file) "scan output") nil
+		  ,(format "--mode=%s" mode)
+		  "-d" ,(format "epsonds:libusb:%s:%s" (car device)
+				(cdr device))
+		  "--resolution" "300dpi"
+		  "--format=png"
+		  ;; US comics size
+		  ;;,@(and (not magazine) (list "-x" "260" "-y" "332"))
+		  ,@(cond
+		     ((or width height)
+		      (list "-x" (format "%s" width) "-y" (format "%s" height)))
+		     ((not magazine)
+		      (list "-x" "260" "-y" "336"))
+		     ;; Magazine size
+		     (t
+		      ;;(list "-x" "268" "-y" "418"))
+		      (list "-x" "280" "-y" "432"))))))
+      (pop-to-buffer "error")
+      (insert-file-contents "scan output"))
+    (call-process "~/src/usbreset/usbreset" nil (get-buffer-create "*reset*") nil
+		  (format "/dev/bus/usb/%s/%s"
+			  (car device) (cdr device)))
     (when rotate
       (call-process "mogrify" nil nil nil
 		    "-rotate" (format "%s" rotate)
@@ -197,7 +200,7 @@ If START, start on that page."
     (magscan-mogrify-jpeg file)
     (magscan-display (file-name-with-extension file "jpg") 0)))
 
-(defvar magscan-page-number 1279)
+(defvar magscan-page-number 1259)
 
 (defun magscan-next-single-pages ()
   (interactive)
@@ -653,6 +656,12 @@ If START, start on that page."
       (delete-file cover)))
   (magscan-renumber-current-directory))
 
+(defun magscan-tenderly-pack (files)
+  (interactive (list (dired-get-marked-files nil current-prefix-arg)))
+  (magscan-pack (cl-loop for file in files
+			 when (tcor-upload-directory-p file)
+			 collect file)))
+
 (defun magscan-pack (files)
   (interactive (list (dired-get-marked-files nil current-prefix-arg)))
   (let ((mag-data
@@ -669,6 +678,38 @@ If START, start on that page."
 		    name)))
       (write-region (point-min) (point-max) "~/src/kwakk/upload/uploading.csv"))))
 
+(defvar magscan--upload-header nil)
+(defvar magscan--upload-files nil)
+
+(defun magscan-upload-csv ()
+  (interactive)
+  (with-temp-buffer
+    (insert-file-contents "~/src/kwakk/upload/uploading.csv")
+    (setq magscan--upload-header (buffer-substring (point) (pos-bol 2)))
+    (forward-line 1)
+    (setq magscan--upload-files (split-string (buffer-substring (point) (point-max)) "\n"))
+    (magscan--upload-csv)))
+
+(defun magscan--upload-csv ()
+  (with-temp-buffer
+    (insert magscan--upload-header)
+    (insert (car magscan--upload-files) "\n")
+    (write-region (point-min) (point-max) "~/src/kwakk/upload/uploading-part.csv"))
+  (let ((default-directory (expand-file-name "~/src/kwakk/upload/")))
+    (let ((proc
+	   (start-process "upload" (get-buffer-create "*ia*")
+			   "ia" "upload" "--metadata=mediatype:texts"
+			  "--spreadsheet=uploading-part.csv")))
+      (set-process-sentinel
+       proc
+       (lambda (_ change)
+	 (message "Got process change: %S" change)
+	 (when (string-match-p "finished" change)
+	   (pop magscan--upload-files)
+	   (if (not magscan--upload-files)
+	       (message "Finished uploading")
+	     (run-at-time (* 60 10) nil #'magscan--upload-csv))))))))
+
 (defun magscan--identifier (name)
   (replace-regexp-in-string " " "-" (replace-regexp-in-string "[^-a-z0-9 ]" "" (downcase name))))
 
@@ -676,6 +717,13 @@ If START, start on that page."
   (let* ((mags (tcor-magazines))
 	 (data (cdr (assq (intern mag) mags)))
 	 (digits (or (cdr (assq 'digits data)) 3))
+	 (doubles
+	  (with-temp-buffer
+	    (when (file-exists-p (expand-file-name "double-issues.txt"
+						   (format "~/src/kwakk/magscan/%s/" mag)))
+	      (insert-file-contents (expand-file-name "double-issues.txt"
+						      (format "~/src/kwakk/magscan/%s/" mag)))
+	      (split-string (buffer-string) "\n" t))))
 	 prefix)
     (when (string-match "[A-Z]" issue)
       (setq prefix (substring issue 0 (- (length issue) digits))
@@ -691,7 +739,11 @@ If START, start on that page."
 	       (not (assq 'misc data)))
 	  (concat (cdr (assq (intern prefix) (cdr (assoc 'prefix data)))) " ")
 	"")
-      (format "#%d" (string-to-number issue))))))
+      (format "#%d" (string-to-number issue))
+      (let ((next (concat prefix (format (format "%%0%dd" digits) (1+ (string-to-number issue))))))
+	(if (member next doubles)
+	    (concat "-" (format "%d" (1+ (string-to-number issue))))
+	  ""))))))
 
 (defun magscan-pack-magazine (mag &optional outside files make-small)
   (cl-loop
