@@ -22,7 +22,7 @@
 (require 'rmc)
 (require 'tcor)
 
-(defvar magscan-magazine "CI")
+(defvar magscan-magazine "CBG")
 
 (defun magscan-find-device ()
   (let ((bits (split-string (file-truename "/dev/epson") "/")))
@@ -132,24 +132,26 @@ If START, start on that page."
 			    (t
 			     (format "Scan page %d and %d"
 				     (- (* i 2) 0) (- (1+ (* i 2)) 0))))
-			   '((?b "Yes")
+			   '((?d "Yes")
 			     (?q "Quit")
 			     (?c "Colour next")
 			     (?2 "Colour next")
+			     (?b "black and white next")
 			     (?w "Black and white next")
 			     (?n "Redo previous")
+			     (?a "Redo previous")
 			     (?p "Page number")))
 	     while (not (eql (car choice) ?q))
 	     when (or (eql (car choice) ?\r)
 		      ;; Pedal.
-		      (eql (car choice) ?b))
+		      (eql (car choice) ?d))
 	     do (cl-incf i)
-	     when (eql (car choice) ?n)
+	     when (memq (car choice) '(?n ?a))
 	     do (cl-decf i)
 	     when (or (eql (car choice) ?c)
 		      (eql (car choice) ?2))
 	     do (setq colour t)
-	     when (eql (car choice) ?w)
+	     when (memq (car choice) '(?w ?b))
 	     do (setq colour nil)
 	     when (eql (car choice) ?p)
 	     do (setq i (let ((number (read-string "Page number: ")))
@@ -167,7 +169,7 @@ If START, start on that page."
 			  (format "%03d-%03d"
 				  (- (* i 2) 2) (- (1+ (* i 2)) 2))))
 			".png")))
-	     (unless (member (car choice) '(?c ?w ?2 ?n))
+	     (unless (member (car choice) '(?c ?w ?2 ?n ?a ?b))
 	       (magscan-scan file 
 			     (if colour
 				 "color"
@@ -200,12 +202,18 @@ If START, start on that page."
     (magscan-mogrify-jpeg file)
     (magscan-display (file-name-with-extension file "jpg") 0)))
 
-(defvar magscan-page-number 1259)
+(defvar magscan-page-number 1291)
+
+(defun magscan-y-or-n-p (prompt)
+  (equal (car (read-multiple-choice prompt
+				    '((?a "Yes")
+				      (?b "No"))))
+	 ?a))
 
 (defun magscan-next-single-pages ()
   (interactive)
   (cl-incf magscan-page-number)
-  (while (not (y-or-n-p (format "Is it number %d?" magscan-page-number)))
+  (while (not (magscan-y-or-n-p (format "Is it number %d?" magscan-page-number)))
     (cl-incf magscan-page-number))
   (magscan-single-pages (format "%d" magscan-page-number)
 			;;292 430 ; Three digit newspaper CBG (old)
@@ -223,27 +231,32 @@ If START, start on that page."
 	 file)
     (when (and (file-exists-p (magscan-file issue ""))
 	       (= (or start 1) 1)
-	       (not (y-or-n-p (format "%s exists.  Really rescan?"
-				      issue))))
+	       (not (magscan-y-or-n-p (format "%s exists.  Really rescan?"
+					      issue))))
       (error "Already exists"))
     (cl-loop for choice = (read-multiple-choice
 			   (format "Scan page %d" i)
-			   '((?b "Yes")
+			   '((?d "Yes")
 			     (?q "Quit")
 			     (?2 "Colour next")
 			     (?c "Colour next")
+			     (?b "black and white next")
+			     (?w "black and white next")
 			     (?n "Redo previous")
+			     (?a "Redo previous")
 			     (?p "Page number")))
 	     while (not (eql (car choice) ?q))
 	     when (or (eql (car choice) ?c)
 		      (eql (car choice) ?2))
 	     do (setq colour t)
-	     when (eql (car choice) ?n)
+	     when (memq (car choice) '(?w ?b))
+	     do (setq colour nil)
+	     when (memq (car choice) '(?n ?a))
 	     do (cl-decf i)
 	     when (eql (car choice) ?p)
 	     do (setq i (read-string "Page number: "))
 	     do (setq file (magscan-file issue (format "page-%03d.png" i)))
-	     (unless (memq (car choice) '(?c ?2 ?n))
+	     (unless (memq (car choice) '(?c ?2 ?n ?a ?w ?b))
 	       (magscan-scan file
 			     (if colour
 				 "color"
@@ -254,7 +267,7 @@ If START, start on that page."
 	       (setq colour nil))
 	     when (or (eql (car choice) ?\r)
 		      ;; Pedal.
-		      (eql (car choice) ?b))
+		      (eql (car choice) ?d))
 	     do (cl-incf i))))
 
 (defun magscan-display (file &optional rotation)
@@ -264,6 +277,7 @@ If START, start on that page."
     (delete-other-windows)
     (buffer-disable-undo)
     (erase-buffer)
+    (keymap-local-set "n" 'magscan-next-single-pages)
     (insert-image
      (create-image
       file
@@ -658,9 +672,26 @@ If START, start on that page."
 
 (defun magscan-tenderly-pack (files)
   (interactive (list (dired-get-marked-files nil current-prefix-arg)))
+  (let ((data
+	 (cdr (assq (intern (file-name-nondirectory (directory-file-name default-directory)))
+		    (tcor-magazines)))))
+    (when (or (assq 'hidden data)
+	      (assq 'limited data))
+      (user-error "Magazine is limited or hidden")))
   (magscan-pack (cl-loop for file in files
 			 when (tcor-upload-directory-p file)
 			 collect file)))
+
+(defvar magscan--languages 
+  '(("eng" "English")
+    ("fre" "French")
+    ("spa" "Spanish")
+    ("ita" "Italian")
+    ("ger" "German")
+    ("dut" "Dutch")
+    ("nor" "Norwegian")
+    ("dan" "Danish")
+    ("por" "Portuguese")))
 
 (defun magscan-pack (files)
   (interactive (list (dired-get-marked-files nil current-prefix-arg)))
@@ -669,12 +700,15 @@ If START, start on that page."
 				nil files)))
     (with-temp-buffer
       (insert "identifier,file,description,subject[0],subject[1],subject[2],title,creator,date,collection\n")
-      (cl-loop for (name file) in mag-data
+      (cl-loop for (name file language) in mag-data
 	       do (insert
 		   (format
-		    "magazine-%s,%s,Magazine/fanzine about comics,magazine,fanzine,comics,%s,,,\n"
+		    "magazine-%s,%s,Magazine/fanzine about comics%s,magazine,fanzine,comics,%s,,,\n"
 		    (magscan--identifier name)
 		    (file-name-nondirectory file)
+		    (if language
+			(format " in %s" (cadr (assoc language magscan--languages)))
+		      "")
 		    name)))
       (write-region (point-min) (point-max) "~/src/kwakk/upload/uploading.csv"))))
 
@@ -687,7 +721,8 @@ If START, start on that page."
     (insert-file-contents "~/src/kwakk/upload/uploading.csv")
     (setq magscan--upload-header (buffer-substring (point) (pos-bol 2)))
     (forward-line 1)
-    (setq magscan--upload-files (split-string (buffer-substring (point) (point-max)) "\n"))
+    (setq magscan--upload-files
+	  (delete "" (split-string (buffer-substring (point) (point-max)) "\n")))
     (magscan--upload-csv)))
 
 (defun magscan--upload-csv ()
@@ -708,7 +743,7 @@ If START, start on that page."
 	   (pop magscan--upload-files)
 	   (if (not magscan--upload-files)
 	       (message "Finished uploading")
-	     (run-at-time (* 60 10) nil #'magscan--upload-csv))))))))
+	     (run-at-time (* 60 2) nil #'magscan--upload-csv))))))))
 
 (defun magscan--identifier (name)
   (replace-regexp-in-string " " "-" (replace-regexp-in-string "[^-a-z0-9 ]" "" (downcase name))))
@@ -784,7 +819,7 @@ If START, start on that page."
 		 (delete-file cbr))
 	       (apply #'call-process "rar" nil (get-buffer-create "*rar*") nil "a" cbr pages)
 	       (cl-decf width 200))))))
-     (list name cbr))))
+     (list name cbr (tcor-language (expand-file-name (car pages) dir))))))
 
 (defun magscan-csn (files)
   (interactive (list (dired-get-marked-files nil current-prefix-arg)))
