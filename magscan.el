@@ -22,7 +22,7 @@
 (require 'rmc)
 (require 'tcor)
 
-(defvar magscan-magazine "CBG")
+(defvar magscan-magazine "MIP")
 
 (defun magscan-find-device ()
   (let ((bits (split-string (file-truename "/dev/epson") "/")))
@@ -120,8 +120,8 @@ If START, start on that page."
 	 file)
     (when (and (file-exists-p (magscan-file issue ""))
 	       (= (or start 1) 1)
-	       (not (y-or-n-p (format "%s exists.  Really rescan?"
-				      issue))))
+	       (not (magscan-y-or-n-p (format "%s exists.  Really rescan?"
+					      issue))))
       (error "Already exists"))
     (cl-loop for choice = (read-multiple-choice
 			   (cond
@@ -140,6 +140,7 @@ If START, start on that page."
 			     (?w "Black and white next")
 			     (?n "Redo previous")
 			     (?a "Redo previous")
+			     (?i "All colour")
 			     (?p "Page number")))
 	     while (not (eql (car choice) ?q))
 	     when (or (eql (car choice) ?\r)
@@ -149,8 +150,11 @@ If START, start on that page."
 	     when (memq (car choice) '(?n ?a))
 	     do (cl-decf i)
 	     when (or (eql (car choice) ?c)
-		      (eql (car choice) ?2))
+		      (eql (car choice) ?2)
+		      (eql (car choice) ?i))
 	     do (setq colour t)
+	     when (eql (car choice) ?i)
+	     do (setq default-colour t)
 	     when (memq (car choice) '(?w ?b))
 	     do (setq colour nil)
 	     when (eql (car choice) ?p)
@@ -169,7 +173,7 @@ If START, start on that page."
 			  (format "%03d-%03d"
 				  (- (* i 2) 2) (- (1+ (* i 2)) 2))))
 			".png")))
-	     (unless (member (car choice) '(?c ?w ?2 ?n ?a ?b))
+	     (unless (member (car choice) '(?c ?w ?2 ?n ?a ?b ?b ?i))
 	       (magscan-scan file 
 			     (if colour
 				 "color"
@@ -206,9 +210,9 @@ If START, start on that page."
 
 (defun magscan-y-or-n-p (prompt)
   (equal (car (read-multiple-choice prompt
-				    '((?a "Yes")
-				      (?b "No"))))
-	 ?a))
+				    '((?c "Yes")
+				      (?a "No"))))
+	 ?c))
 
 (defun magscan-next-single-pages ()
   (interactive)
