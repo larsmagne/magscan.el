@@ -209,7 +209,7 @@ If START, start on that page."
 				 "gray")
 			       nil w h
 			       ;; 0 
-			       (and single (if (cl-evenp i) 180 0))
+			       (and single (if (cl-evenp i) 0 180))
 			       ))
 	       (magscan-display file (and single 0))
 	       (message "Scanned")
@@ -275,56 +275,6 @@ If START, start on that page."
    t
    )
   (cl-incf magscan-page-number))
-
-(defun magscan-single-pages (issue width height &optional start)
-  "Scan a magazine.
-If START, start on that page."
-  (interactive "sIssue: \nnWidth: \nnHeight: \np")
-  (setq start (or start 1))
-  (let* ((i start)
-	 (colour t)
-	 file)
-    (when (and (file-exists-p (magscan-file issue ""))
-	       (= (or start 1) 1)
-	       (not (magscan-y-or-n-p (format "%s exists.  Really rescan?"
-					      issue))))
-      (error "Already exists"))
-    (cl-loop for choice = (read-multiple-choice
-			   (format "Scan page %d" i)
-			   '((?b "Yes")
-			     (?q "Quit")
-			     (?2 "Colour next")
-			     (?c "Colour next")
-			     (?e "black and white next")
-			     (?w "black and white next")
-			     (?n "Redo previous")
-			     (?a "Redo previous")
-			     (?p "Page number")))
-	     while (not (eql (car choice) ?q))
-	     when (or (eql (car choice) ?c)
-		      (eql (car choice) ?2))
-	     do (setq colour t)
-	     when (memq (car choice) '(?w ?e))
-	     do (setq colour nil)
-	     when (memq (car choice) '(?n ?a))
-	     do (cl-decf i)
-	     when (eql (car choice) ?p)
-	     do (setq i (read-string "Page number: "))
-	     do (setq file (magscan-file issue (format "page-%03d.png" i)))
-	     (unless (memq (car choice) '(?c ?2 ?n ?a ?w ?e))
-	       (magscan-scan file
-			     (if colour
-				 "color"
-			       "gray")
-			     nil
-			     width height
-			     (and single (if (cl-evenp i) 0 180)))
-	       (magscan-display file 0)
-	       (setq colour nil))
-	     when (or (eql (car choice) ?\r)
-		      ;; Pedal.
-		      (eql (car choice) ?b))
-	     do (cl-incf i))))
 
 (defun magscan-display (file &optional rotation)
   (clear-image-cache)
