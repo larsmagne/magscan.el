@@ -144,7 +144,7 @@ If START, start on that page."
 			       "Scan inside front and page 3"))
 			    (t
 			     (if single
-				 (format "Scan page %d" i)
+				 (format "Scan page %d" (1+ i))
 			       (format "Scan page %d and %d"
 				       (- (* i 2) 0) (- (1+ (* i 2)) 0)))))
 			   '((?b "Yes")
@@ -246,19 +246,19 @@ If START, start on that page."
 				      (?a "No"))))
 	 ?c))
 
-(defvar magscan-page-number 52)
+(defvar magscan-page-number 1327)
 
 (defun magscan-next ()
   (interactive)
   (while (not (magscan-y-or-n-p (format "Is it number %d?" magscan-page-number)))
     (cl-incf magscan-page-number))
   (magscan-usb-reset)
-  ;;(setq magscan-page-number 1521)
+  ;;(setq magscan-page-number 1549)
   (magscan-with-size
    "CBG"
    (format "%03d" magscan-page-number)
    ;; 292 430 ; Three digit newspaper CBG (old)
-   280 305 ; Modern newspaper CBG
+   278 305 ; Modern newspaper CBG
    ;; 208 296 ; Comics International
    ;; 289 348 ; Comic Show News
    ;; 180 260 ; Wizard
@@ -344,7 +344,7 @@ If START, start on that page."
     (unless (file-exists-p dir)
       (make-directory dir))
     (call-process
-     "convert" nil nil nil
+     "convert" nil " *errors*" nil
      "-normalize"
      "-resize" "150x"
      (let ((png (expand-file-name "page-001.png" directory)))
@@ -760,6 +760,7 @@ If START, start on that page."
   (let* ((mags (tcor-magazines))
 	 (data (cdr (assq (intern mag) mags)))
 	 (digits (or (cdr (assq 'digits data)) 3))
+	 (yearmonth (cdr (assq 'yearmonth data)))
 	 (doubles
 	  (with-temp-buffer
 	    (when (file-exists-p (expand-file-name "double-issues.txt"
@@ -788,7 +789,15 @@ If START, start on that page."
 	       (not (assq 'misc data)))
 	  (concat prefix-name " ")
 	"")
-      (format "#%d" (string-to-number issue))
+      (if yearmonth
+	  (let ((year (/ (string-to-number issue) 100))
+		(month (mod (string-to-number issue) 100)))
+	    (format "%s %02d"
+		    (if (> year 90)
+			(+ 1900 year)
+		      (+ 2000 year))
+		    month))
+	  (format "#%d" (string-to-number issue)))
       (let ((next (concat prefix (format (format "%%0%dd" digits) (1+ (string-to-number issue))))))
 	(if (member next doubles)
 	    (concat "-" (format "%d" (1+ (string-to-number issue))))
